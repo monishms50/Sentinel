@@ -1,0 +1,96 @@
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         CONTROLLER STARTUP                                      │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  main()                                                                         │
+│  ├── getKubeClient()            → Connect to K8s API                            │
+│  ├── purger.NewPurger()         → Create pod deletion handler                   │
+│  ├── reconciler.NewReconciler() → Create score watcher                          │
+│  ├── go configRefreshLoop()     → Fetch config from API every 60s               │
+│  └── go reconcileLoop()         → Main loop every 10s                           │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  reconcileLoop() - Every 10 seconds                                             │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  1. Check if auto-purge enabled                                                 │
+│  2. GET /api/pods → Fetch all pod scores from API                               │
+│  3. For each pod:                                                               │
+│     ├── IF score < threshold → Add to pendingPurges with grace period           │
+│     └── IF score recovered   → Remove from pendingPurges (cancel purge)         │
+│  4. Process pending purges past grace period:                                   │
+│     ├── Re-check current score                                                  │
+│     ├── If still below threshold → purger.PurgePod()                            │
+│     └── K8s auto-recreates pod from Deployment (fresh start, score=100)         │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+Purge Speed Settings:
+┌─────────────────┬─────────────┬──────────────┬────────────────────────────┐
+│  Speed          │  Threshold  │  Grace Period │  Behavior                 │
+├─────────────────┼─────────────┼──────────────┼────────────────────────────┤
+│  off            │     -       │      -       │  No auto-purge             │
+│  conservative   │    < 30     │    300s      │  Wait 5 min, then purge    │
+│  moderate       │    < 40     │     60s      │  Wait 1 min, then purge    │
+│  aggressive     │    < 50     │      0s      │  Immediate purge           │
+└─────────────────┴─────────────┴──────────────┴────────────────────────────┘
+
+Purge Flow Example:
+Config: moderate (threshold=40, grace=60s)
+
+T+0s:   Reconcile detects nginx-abc score=35 < 40
+        → Add to pendingPurges, will purge at T+60s
+        → Log: "⚠️ Pod nginx-abc score 35 < 40, scheduled for purge in 60s"
+
+T+30s:  SCENARIO A - Score Recovers:
+        → nginx-abc score=45 (recovered!)
+        → Remove from pendingPurges
+        → Log: "✅ Pod nginx-abc score recovered (35 → 45), canceling purge"
+
+T+60s:  SCENARIO B - No Recovery:
+        → Re-check score: still 35
+        → purger.PurgePod()
+           ├── Record K8s Event for audit
+           └── kubectl delete pod nginx-abc --grace-period=0
+        → Log: "🗑️ Purged pod nginx-abc (score: 35)"
+        → Deployment recreates pod → New pod starts fresh with score=100
+        
+        
+        Updated Complete System Architecture:
+        ┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           KUBERNETES CLUSTER                                    │
+│                                                                                 │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                        demo-app namespace                                  │ │
+│  │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │ │
+│  │   │ nginx-abc   │  │ nginx-def   │  │ nginx-ghi   │  │ postgres-0  │       │ │
+│  │   │ Score: 95   │  │ Score: 67   │  │ Score: 23   │  │ Score: 99   │       │ │
+│  │   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │ │
+│  └──────────┼────────────────┼────────────────┼────────────────┼───────────────┘ │
+│             │                │                │                │                 │
+│  ┌──────────┼────────────────┼────────────────┼────────────────┼───────────────┐ │
+│  │          │         sentinel namespace      │                │               │ │
+│  │          │                │                │                │               │ │
+│  │          ▼                ▼                ▼                ▼               │ │
+│  │  ┌───────────────────────────────────────────────────────────────────────┐ │ │
+│  │  │                    ENTROPY AGENT (DaemonSet)                          │ │ │
+│  │  │  • kubectl exec into pods → Capture baselines → Detect drift          │ │ │
+│  │  └───────────────────────────────────┬───────────────────────────────────┘ │ │
+│  │                                      │ POST /api/baselines, /api/drift     │ │
+│  │                                      ▼                                     │ │
+│  │  ┌───────────────────────────────────────────────────────────────────────┐ │ │
+│  │  │                    API SERVER (Deployment)                            │ │ │
+│  │  │  HTTP :8080  │  SQLite DB  │  WebSocket Hub                           │ │ │
+│  │  └───────────────────────────────────┬───────────────────────────────────┘ │ │
+│  │                                      │ GET /api/pods (scores)              │ │
+│  │                                      ▼                                     │ │
+│  │  ┌───────────────────────────────────────────────────────────────────────┐ │ │
+│  │  │                   PURGE CONTROLLER (Deployment)                       │ │ │
+│  │  │  Every 10s: Fetch scores → Check thresholds → Grace period → Purge    │ │ │
+│  │  │  └── kubectl delete pod (K8s auto-recreates from Deployment)          │ │ │
+│  │  └───────────────────────────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+        
