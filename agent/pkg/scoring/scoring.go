@@ -1,7 +1,7 @@
 package scoring
 
 import (
-	"github.com/sentinel/agent/pkg/monitor"
+	"github.com/monishms50/Sentinel/agent/pkg/monitor"
 )
 
 // Default weights from Blueprint (must sum to 1.0)

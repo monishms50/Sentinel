@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/sentinel/api/models"
-	"github.com/sentinel/api/store"
-	"github.com/sentinel/api/websocket"
+	"github.com/monishms50/Sentinel/api/models"
+	"github.com/monishms50/Sentinel/api/store"
+	"github.com/monishms50/Sentinel/api/websocket"
 )
 
 // Handler contains all HTTP handlers

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sentinel/agent/pkg/baseline"
+	"github.com/monishms50/Sentinel/agent/pkg/baseline"
 )
 
 // DriftEvent represents a detected change from baseline
