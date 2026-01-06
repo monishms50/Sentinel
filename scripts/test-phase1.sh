@@ -50,12 +50,12 @@ if ! docker info > /dev/null 2>&1; then
 fi
 print_status "Docker is running"
 
-# Check if docker-compose is available
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    print_error "docker-compose is not installed. Please install it and try again."
+# Check if docker compose is available
+if ! command -v docker compose &> /dev/null && ! docker compose version &> /dev/null; then
+    print_error "docker compose is not installed. Please install it and try again."
     exit 1
 fi
-print_status "docker-compose is available"
+print_status "docker compose is available"
 
 # Check if Kubernetes cluster is accessible (optional but recommended)
 if command -v kubectl &> /dev/null; then
@@ -72,7 +72,7 @@ fi
 cleanup() {
     echo ""
     print_info "Cleaning up..."
-    docker-compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
 }
 
 # Set trap for cleanup on exit
@@ -81,8 +81,8 @@ trap cleanup EXIT
 # Step 1: Build and start services
 echo ""
 echo "Step 1: Building and starting services..."
-docker-compose -f "$COMPOSE_FILE" build --no-cache
-docker-compose -f "$COMPOSE_FILE" up -d
+docker compose -f "$COMPOSE_FILE" build --no-cache
+docker compose -f "$COMPOSE_FILE" up -d
 
 # Step 2: Wait for API to be healthy
 echo ""
@@ -103,7 +103,7 @@ done
 if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
     print_error "API server did not become healthy within ${MAX_WAIT}s"
     echo "API logs:"
-    docker-compose -f "$COMPOSE_FILE" logs api
+    docker compose -f "$COMPOSE_FILE" logs api
     exit 1
 fi
 
@@ -148,20 +148,20 @@ echo ""
 echo "Step 4: Checking Agent container status..."
 sleep 5  # Give agent time to start
 
-AGENT_STATUS=$(docker-compose -f "$COMPOSE_FILE" ps agent | grep -c "Up" || echo "0")
+AGENT_STATUS=$(docker compose -f "$COMPOSE_FILE" ps agent | grep -c "Up" || echo "0")
 if [ "$AGENT_STATUS" -gt 0 ]; then
     print_status "Agent container is running"
 else
     print_error "Agent container is not running"
     echo "Agent logs:"
-    docker-compose -f "$COMPOSE_FILE" logs agent
+    docker compose -f "$COMPOSE_FILE" logs agent
     exit 1
 fi
 
 # Step 5: Check Agent logs for errors
 echo ""
 echo "Step 5: Checking Agent logs for errors..."
-AGENT_LOGS=$(docker-compose -f "$COMPOSE_FILE" logs agent 2>&1 | tail -20)
+AGENT_LOGS=$(docker compose -f "$COMPOSE_FILE" logs agent 2>&1 | tail -20)
 if echo "$AGENT_LOGS" | grep -i "error\|fatal\|panic" > /dev/null; then
     print_warning "Agent logs contain errors:"
     echo "$AGENT_LOGS" | grep -i "error\|fatal\|panic"
@@ -175,7 +175,7 @@ echo "Step 6: Verifying Agent-API communication..."
 sleep 10  # Give agent time to attempt communication
 
 # Check if agent has sent any requests (this is a basic check)
-AGENT_LOGS_RECENT=$(docker-compose -f "$COMPOSE_FILE" logs --tail=50 agent 2>&1)
+AGENT_LOGS_RECENT=$(docker compose -f "$COMPOSE_FILE" logs --tail=50 agent 2>&1)
 if echo "$AGENT_LOGS_RECENT" | grep -i "api\|endpoint\|sentinel" > /dev/null; then
     print_status "Agent appears to be attempting API communication"
 else
@@ -185,16 +185,16 @@ fi
 # Step 7: Display container status
 echo ""
 echo "Step 7: Container status:"
-docker-compose -f "$COMPOSE_FILE" ps
+docker compose -f "$COMPOSE_FILE" ps
 
 # Step 8: Display recent logs
 echo ""
 echo "Step 8: Recent logs (last 10 lines per service):"
 echo "--- API Logs ---"
-docker-compose -f "$COMPOSE_FILE" logs --tail=10 api
+docker compose -f "$COMPOSE_FILE" logs --tail=10 api
 echo ""
 echo "--- Agent Logs ---"
-docker-compose -f "$COMPOSE_FILE" logs --tail=10 agent
+docker compose -f "$COMPOSE_FILE" logs --tail=10 agent
 
 # Summary
 echo ""
@@ -206,7 +206,7 @@ print_status "API server is running and healthy"
 print_status "API endpoints are accessible"
 print_status "Agent container is running"
 print_warning "Note: Agent requires Kubernetes cluster access to fully function"
-print_info "To view logs: docker-compose -f $COMPOSE_FILE logs -f"
-print_info "To stop services: docker-compose -f $COMPOSE_FILE down"
+print_info "To view logs: docker compose -f $COMPOSE_FILE logs -f"
+print_info "To stop services: docker compose -f $COMPOSE_FILE down"
 echo ""
 echo -e "${GREEN}Phase 1 test completed successfully!${NC}"
