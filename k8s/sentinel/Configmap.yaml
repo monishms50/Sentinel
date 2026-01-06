@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentinel-config
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel-config
+    app.kubernetes.io/part-of: sentinel
+data:
+  # ===========================================
+  # AGENT CONFIGURATION
+  # ===========================================
+  
+  # How often to check for drift (seconds)
+  SCAN_INTERVAL: "30"
+  
+  # Namespaces to monitor (comma-separated, or "all" for all non-system namespaces)
+  MONITORED_NAMESPACES: "demo-app"
+  
+  # ===========================================
+  # ENTROPY CATEGORY WEIGHTS (must sum to 1.0)
+  # ===========================================
+  
+  # Filesystem changes: new files in /bin, /usr/bin, /sbin, config modifications
+  WEIGHT_FILESYSTEM: "0.35"
+  
+  # Process changes: new processes, unexpected parent-child relationships
+  WEIGHT_PROCESSES: "0.30"
+  
+  # Network changes: new listening ports, outbound connections
+  WEIGHT_NETWORK: "0.20"
+  
+  # Package changes: apt/apk/yum installs
+  WEIGHT_PACKAGES: "0.10"
+  
+  # Permission changes: new users, sudo escalation, file permission changes
+  WEIGHT_PERMISSIONS: "0.05"
+  
+  # ===========================================
+  # EVENT SEVERITY POINTS
+  # ===========================================
+  
+  # Filesystem events
+  SEVERITY_NEW_EXECUTABLE: "15"
+  SEVERITY_MODIFIED_SYSTEM_BINARY: "25"
+  SEVERITY_NEW_TMP_FILE: "10"
+  SEVERITY_CONFIG_MODIFIED: "5"
+  
+  # Process events
+  SEVERITY_NEW_PROCESS: "10"
+  SEVERITY_CRYPTO_MINING_SIGNATURE: "50"
+  SEVERITY_UNEXPECTED_PARENT_CHILD: "20"
+  
+  # Network events
+  SEVERITY_NEW_LISTENING_PORT: "20"
+  SEVERITY_SUSPICIOUS_OUTBOUND: "20"
+  SEVERITY_DNS_SUSPICIOUS_DOMAIN: "15"
+  
+  # Package events
+  SEVERITY_NEW_PACKAGE: "15"
+  SEVERITY_PACKAGE_MANAGER_INVOKED: "10"
+  
+  # Permission events
+  SEVERITY_NEW_USER: "30"
+  SEVERITY_SUDO_ESCALATION: "25"
+  SEVERITY_SENSITIVE_FILE_PERMISSION: "15"
+  
+  # ===========================================
+  # PURGE CONTROLLER SETTINGS
+  # ===========================================
+  
+  # Auto-purge enabled (true/false)
+  AUTO_PURGE_ENABLED: "true"
+  
+  # Purge speed: off, conservative, moderate, aggressive
+  PURGE_SPEED: "moderate"
+  
+  # Thresholds by purge speed
+  THRESHOLD_CONSERVATIVE: "30"
+  THRESHOLD_MODERATE: "40"
+  THRESHOLD_AGGRESSIVE: "50"
+  
+  # Grace period before purge (seconds) - time to wait and recheck
+  GRACE_PERIOD_CONSERVATIVE: "300"
+  GRACE_PERIOD_MODERATE: "60"
+  GRACE_PERIOD_AGGRESSIVE: "0"
+  
+  # ===========================================
+  # API SERVER SETTINGS
+  # ===========================================
+  
+  API_PORT: "8080"
+  
+  # How long to retain drift events (hours)
+  EVENT_RETENTION_HOURS: "24"
+  
+  # WebSocket update interval (seconds)
+  WS_UPDATE_INTERVAL: "5"
+  
+  # ===========================================
+  # LOGGING
+  # ===========================================
+  
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"

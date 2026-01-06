@@ -1,0 +1,23 @@
+┌─────────────────────────────────────────────────────────┐
+│                    ENTROPY AGENT                        │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  1. DISCOVER PODS                                       │
+│     └── Watch K8s API for pods with                     │
+│         label: sentinel.io/monitored=true               │
+│                                                         │
+│  2. CAPTURE BASELINE (on pod start)                     │
+│     ├── Filesystem: hash executables in /bin, /usr/bin  │
+│     ├── Processes: list running processes               │
+│     ├── Network: list listening ports                   │
+│     ├── Packages: list installed packages               │
+│     └── Users: list users/groups                        │
+│                                                         │
+│  3. MONITOR (every N seconds)                           │
+│     └── Compare current state vs baseline               │
+│     └── Detect drift (new files, processes, ports...)   │
+│                                                         │
+│  4. REPORT                                              │
+│     └── Send drift events to API server                 │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
