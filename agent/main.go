@@ -21,10 +21,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 
-	"github.com/sentinel/agent/pkg/baseline"
-	"github.com/sentinel/agent/pkg/monitor"
-	"github.com/sentinel/agent/pkg/reporter"
-	"github.com/sentinel/agent/pkg/scoring"
+	"github.com/monishms50/Sentinel/agent/pkg/baseline"
+	"github.com/monishms50/Sentinel/agent/pkg/monitor"
+	"github.com/monishms50/Sentinel/agent/pkg/reporter"
+	"github.com/monishms50/Sentinel/agent/pkg/scoring"
 )
 
 // Agent is the main entropy monitoring agent
