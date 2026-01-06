@@ -1,4 +1,4 @@
-module github.com/sentinel/api
+module github.com/monishms50/Sentinel/api
 
 go 1.22
 
