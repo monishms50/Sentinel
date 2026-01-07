@@ -1,101 +1,76 @@
 # Sentinel UI
 
-React + TypeScript dashboard for the Sentinel Kubernetes Pod Entropy Monitor.
+A **React + TypeScript dashboard** for visualizing and managing **Sentinel**, a Kubernetes Pod Entropy Monitoring system.
 
-## Features
+The Sentinel UI provides real-time observability into pod behavior, entropy scores, drift events, and automated purge actions across a Kubernetes cluster.
 
-- **Real-time Monitoring**: WebSocket-based live updates of pod scores and drift events
-- **Pod Leaderboard**: Ranked view of all monitored pods by entropy score
-- **Pod Detail View**: Comprehensive view of individual pod metrics, events, and history
-- **Pod Manager**: Bulk operations for managing and purging pods
-- **Purge Configuration**: Configure auto-purge thresholds and speeds
-- **Cluster Health Dashboard**: Overview of cluster-wide statistics
-- **Drift Events Feed**: Real-time feed of all detected drift events
-- **Interactive Charts**: Visualizations using Recharts
+---
+
+## Overview
+
+Sentinel UI is designed to give operators and security engineers **clear, real-time insight** into pod stability and behavioral drift, enabling fast detection, investigation, and remediation.
+
+---
+
+## Key Features
+
+* **Real-Time Monitoring**
+
+  * Live entropy score updates via WebSockets
+  * Instant drift event notifications
+
+* **Pod Leaderboard**
+
+  * Ranked view of monitored pods by entropy score
+  * Search, filter, and sort support
+
+* **Pod Detail View**
+
+  * Score breakdown and historical trends
+  * Drift event history
+  * Baseline comparison
+
+* **Pod Management**
+
+  * Bulk pod selection
+  * Manual purge actions
+
+* **Purge Configuration**
+
+  * Auto-purge enable/disable
+  * Configurable purge aggressiveness
+
+* **Cluster Health Dashboard**
+
+  * Cluster-wide entropy distribution
+  * Aggregate health metrics
+
+* **Interactive Visualizations**
+
+  * Charts powered by Recharts
+
+---
 
 ## Tech Stack
 
-- **React 18** - UI framework
-- **TypeScript 5** - Type safety
-- **Vite** - Build tool and dev server
-- **Tailwind CSS 3** - Styling
-- **Recharts** - Chart library
-- **Lucide React** - Icons
+* **React 18**
+* **TypeScript 5**
+* **Vite**
+* **Tailwind CSS 3**
+* **Recharts**
+* **Lucide React**
+* **Nginx** (production container)
 
-## Development
-
-### Prerequisites
-
-- Node.js 20+ 
-- npm or pnpm
-
-### Setup
-
-1. Install dependencies:
-```bash
-npm install
-```
-
-2. Create `.env` file:
-```bash
-cp .env.example .env
-```
-
-3. Update `.env` with your API server URL:
-```
-VITE_API_URL=http://localhost:8080
-```
-
-4. Start development server:
-```bash
-npm run dev
-```
-
-The UI will be available at `http://localhost:3000`
-
-### Build
-
-Build for production:
-```bash
-npm run build
-```
-
-The built files will be in the `dist/` directory.
-
-### Type Checking
-
-Run TypeScript type checking:
-```bash
-npm run type-check
-```
-
-### Linting
-
-Run ESLint:
-```bash
-npm run lint
-```
-
-## Docker
-
-Build the Docker image:
-```bash
-docker build -t sentinel-ui:latest .
-```
-
-Run the container:
-```bash
-docker run -p 80:80 sentinel-ui:latest
-```
+---
 
 ## Project Structure
 
 ```
 ui/
 ├── src/
-│   ├── api/           # API client
-│   ├── components/    # React components
-│   │   ├── Charts/    # Chart components
+│   ├── api/                # API client & WebSocket logic
+│   ├── components/         # UI components
+│   │   ├── Charts/
 │   │   ├── ClusterHealth/
 │   │   ├── EventsFeed/
 │   │   ├── Leaderboard/
@@ -103,85 +78,160 @@ ui/
 │   │   ├── PodDetail/
 │   │   ├── PodManager/
 │   │   └── PurgeConfig/
-│   ├── hooks/         # React hooks
-│   ├── types/         # TypeScript types
-│   ├── App.tsx        # Main app component
-│   ├── main.jsx       # Entry point
-│   └── index.css      # Global styles
-├── public/            # Static assets
-├── Dockerfile         # Container build
-├── nginx.conf         # Nginx configuration
-├── tailwind.config.js # Tailwind config
-├── tsconfig.json      # TypeScript config
-└── vite.config.js     # Vite config
+│   ├── hooks/              # Custom React hooks
+│   ├── types/              # TypeScript interfaces
+│   ├── App.tsx             # Root component
+│   ├── main.tsx            # Application entry point
+│   └── index.css           # Global styles
+├── public/                 # Static assets
+├── Dockerfile              # Production container build
+├── nginx.conf              # Nginx configuration
+├── tailwind.config.js      # Tailwind theme and extensions
+├── tsconfig.json           # TypeScript configuration
+└── vite.config.js          # Vite configuration
 ```
+
+---
+
+## Prerequisites
+
+* **Node.js 20+**
+* **npm** or **pnpm**
+
+---
+
+## Local Development
+
+### Install Dependencies
+
+```bash
+npm install
+```
+
+### Configure Environment Variables
+
+Create a `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Or manually:
+
+```bash
+echo "VITE_API_URL=http://localhost:8080" > .env
+```
+
+### Start Development Server
+
+```bash
+npm run dev
+```
+
+The UI will be available at:
+
+```
+http://localhost:3000
+```
+
+---
+
+## Build & Tooling
+
+### Production Build
+
+```bash
+npm run build
+```
+
+The output will be generated in the `dist/` directory.
+
+### Type Checking
+
+```bash
+npm run type-check
+```
+
+### Linting
+
+```bash
+npm run lint
+```
+
+---
+
+## Docker
+
+### Build Image
+
+```bash
+docker build -t sentinel-ui:latest .
+```
+
+### Run Container
+
+```bash
+docker run -p 80:80 sentinel-ui:latest
+```
+
+The UI will be available at:
+
+```
+http://localhost
+```
+
+---
 
 ## API Integration
 
-The UI communicates with the Sentinel API server:
+The UI communicates with the **Sentinel API** using REST and WebSocket endpoints.
 
-- **REST API**: `/api/*` endpoints for data fetching
-- **WebSocket**: `/api/ws/scores` for real-time updates
+### REST Endpoints
 
-See `src/api/client.ts` for API client implementation.
+* `GET /api/pods`
+* `GET /api/pods/:id`
+* `GET /api/pods/:id/baseline`
+* `GET /api/leaderboard`
+* `GET /api/stats`
+* `GET /api/events`
+* `GET /api/config`
+* `PUT /api/config`
+* `DELETE /api/pods/:id`
 
-## Environment Variables
+### WebSocket
 
-- `VITE_API_URL` - API server base URL (default: `http://localhost:8080`)
+* `WS /api/ws/scores`
 
-## Styling
+#### WebSocket Messages
 
-The UI uses Tailwind CSS with custom Sentinel theme colors:
+```ts
+{ type: "score_update", payload: { podUID, score, status } }
+{ type: "drift_event", payload: DriftEvent }
+{ type: "pod_added", payload: { podUID, podName } }
+{ type: "pod_removed", payload: { podUID, podName } }
+```
 
-- `sentinel-bg` - Background color (#0a0e14)
-- `sentinel-surface` - Surface/card color (#11151c)
-- `sentinel-border` - Border color (#1f2937)
-- `sentinel-text` - Primary text color (#f3f4f6)
-- `sentinel-muted` - Muted text color (#9ca3af)
-- `sentinel-accent` - Accent color (#00ff9f)
-- `sentinel-warning` - Warning color (#fbbf24)
-- `sentinel-danger` - Danger color (#ff6b6b)
+See `src/api/client.ts` for implementation details.
 
-## Components
+---
 
-### Layout
-Main layout component with header, navigation, and footer.
+## Styling & Theme
 
-### ClusterHealth
-Displays cluster-wide statistics and health metrics.
+The UI uses a custom Sentinel theme built on Tailwind CSS.
 
-### Leaderboard
-Ranked list of pods sorted by entropy score.
+| Token            | Color     | Usage            |
+| ---------------- | --------- | ---------------- |
+| sentinel-bg      | `#0a0e14` | App background   |
+| sentinel-surface | `#11151c` | Cards & panels   |
+| sentinel-border  | `#1f2937` | Borders          |
+| sentinel-text    | `#f3f4f6` | Primary text     |
+| sentinel-muted   | `#9ca3af` | Secondary text   |
+| sentinel-accent  | `#00ff9f` | Healthy / accent |
+| sentinel-warning | `#fbbf24` | Warning          |
+| sentinel-danger  | `#ff6b6b` | Critical         |
 
-### PodDetail
-Detailed view of a single pod with:
-- Score breakdown
-- Score history chart
-- Recent drift events
-- Purge action
-
-### PodManager
-Management interface for:
-- Filtering pods by status
-- Selecting pods for bulk operations
-- Purging individual or multiple pods
-
-### PurgeConfig
-Configuration panel for:
-- Enabling/disabling auto-purge
-- Setting purge speed (conservative/moderate/aggressive)
-- Viewing current thresholds
-
-### EventsFeed
-Real-time feed of drift events with filtering and categorization.
-
-### Charts
-Chart components using Recharts:
-- ScoreChart - Pod score history
-- ClusterHealthChart - Health distribution
-- ScoreDistributionChart - Score distribution
-- CategoryBreakdownChart - Category-wise breakdown
+---
 
 ## License
 
-Part of the Sentinel project.
+Part of the **Sentinel** project.
