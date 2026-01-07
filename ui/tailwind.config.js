@@ -1,34 +1,106 @@
+// =============================================================================
+// SENTINEL UI - TAILWIND CONFIGURATION
+// =============================================================================
+// Custom theme configuration for the Sentinel dashboard.
+// Defines the dark theme color palette and custom utilities.
+// =============================================================================
+
 /** @type {import('tailwindcss').Config} */
 export default {
+  // Files to scan for Tailwind classes
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  
   theme: {
     extend: {
+      // ========================================================================
+      // CUSTOM COLORS
+      // ========================================================================
       colors: {
         sentinel: {
-          bg: '#0a0e14',
-          surface: '#11151c',
-          border: '#1f2937',
-          text: '#f3f4f6',
-          muted: '#9ca3af',
-          accent: '#00ff9f',
-          warning: '#fbbf24',
-          danger: '#ff6b6b',
+          // Background colors (dark theme)
+          bg: '#0a0e14',          // Main background (very dark blue-gray)
+          card: '#0d1117',        // Card/panel background
+          border: '#1f2937',      // Border color
+          
+          // Text colors
+          text: '#e2e8f0',        // Primary text (light gray)
+          muted: '#4a5568',       // Muted/secondary text
+          
+          // Accent colors
+          accent: '#00ff9f',      // Primary accent (neon green)
+          blue: '#00d4ff',        // Secondary accent (cyan)
+          
+          // Status colors
+          warning: '#fbbf24',     // Warning (amber)
+          danger: '#ff6b6b',      // Danger/error (coral red)
+          critical: '#ff4444',    // Critical (bright red)
         },
       },
+      
+      // ========================================================================
+      // CUSTOM ANIMATIONS
+      // ========================================================================
       animation: {
-        'fade-in': 'fadeIn 0.3s ease-in-out',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        // Slow spin for settings icon
+        'spin-slow': 'spin 3s linear infinite',
+        
+        // Slow ping for status indicators
+        'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+        
+        // Fade in animation
+        'fade-in': 'fadeIn 0.2s ease-in-out',
+        
+        // Slide in from right
+        'slide-in-right': 'slideInRight 0.3s ease-out',
+        
+        // Pulse glow effect
+        'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
       },
+      
       keyframes: {
         fadeIn: {
-          '0%': { opacity: '0', transform: 'translateY(-10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
         },
+        slideInRight: {
+          '0%': { transform: 'translateX(100%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
+        pulseGlow: {
+          '0%, 100%': { boxShadow: '0 0 5px rgba(0, 255, 159, 0.5)' },
+          '50%': { boxShadow: '0 0 20px rgba(0, 255, 159, 0.8)' },
+        },
+      },
+      
+      // ========================================================================
+      // CUSTOM FONTS
+      // ========================================================================
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+      },
+      
+      // ========================================================================
+      // CUSTOM SPACING
+      // ========================================================================
+      spacing: {
+        '18': '4.5rem',
+        '88': '22rem',
+      },
+      
+      // ========================================================================
+      // CUSTOM BOX SHADOWS
+      // ========================================================================
+      boxShadow: {
+        'glow-accent': '0 0 20px rgba(0, 255, 159, 0.3)',
+        'glow-danger': '0 0 20px rgba(255, 107, 107, 0.3)',
+        'glow-warning': '0 0 20px rgba(251, 191, 36, 0.3)',
       },
     },
   },
+  
   plugins: [],
-}
+};
