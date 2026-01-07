@@ -3,7 +3,6 @@ package monitor
 import (
 	"fmt"
 	"time"
-
 	"github.com/monishms50/Sentinel/agent/pkg/baseline"
 )
 

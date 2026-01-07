@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"time"
-
 	"github.com/monishms50/Sentinel/agent/pkg/baseline"
 	"github.com/monishms50/Sentinel/agent/pkg/monitor"
 	"github.com/monishms50/Sentinel/agent/pkg/scoring"
