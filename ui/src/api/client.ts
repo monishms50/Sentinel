@@ -14,7 +14,7 @@ import type {
 // API CLIENT
 // ============================================================================
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 
 class APIClient {
   private baseUrl: string;

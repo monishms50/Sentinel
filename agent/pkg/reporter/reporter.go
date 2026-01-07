@@ -7,10 +7,9 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/sentinel/agent/pkg/baseline"
-	"github.com/sentinel/agent/pkg/monitor"
-	"github.com/sentinel/agent/pkg/scoring"
+	"github.com/monishms50/Sentinel/agent/pkg/baseline"
+	"github.com/monishms50/Sentinel/agent/pkg/monitor"
+	"github.com/monishms50/Sentinel/agent/pkg/scoring"
 )
 
 // Reporter handles communication with the Sentinel API

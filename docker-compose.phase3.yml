@@ -1,0 +1,68 @@
+# =============================================================================
+# SENTINEL - Phase 3: Controller + API Testing
+# =============================================================================
+# Tests the Purge Controller (Phase 3) with API Server dependency
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # API Server - Required dependency for Controller
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: sentinel-api-phase3
+    ports:
+      - "8080:8080"
+    environment:
+      - API_PORT=8080
+      - DB_PATH=/data/sentinel.db
+      - EVENT_RETENTION_HOURS=24
+      - LOG_LEVEL=info
+    volumes:
+      - api-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+
+  # Purge Controller - Phase 3 Component
+  controller:
+    build:
+      context: ./controller
+      dockerfile: Dockerfile
+    container_name: sentinel-controller-phase3
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      - API_ENDPOINT=http://api:8080
+      - RECONCILE_INTERVAL=10
+      - DRY_RUN=true
+      - PURGE_SPEED=moderate
+      - LOG_LEVEL=info
+      # Kubernetes config (for local testing, may need kubeconfig mounted)
+      - KUBECONFIG=/kubeconfig/config
+    volumes:
+      # Mount kubeconfig for local Kubernetes access
+      # Note: On Windows, you may need to adjust this path
+      - ${HOME}/.kube/config:/kubeconfig/config:ro
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    # Note: Controller requires Kubernetes cluster access
+    # For local testing, ensure kubectl is configured and accessible
+
+volumes:
+  api-data:
+    driver: local
+
+networks:
+  sentinel-network:
+    driver: bridge
