@@ -1,0 +1,435 @@
+# =============================================================================
+# SENTINEL - Docker Compose for Local Development & Testing
+# =============================================================================
+# Complete local stack without Kubernetes dependency
+# 
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose up -d api ui       # Start specific services
+#   docker compose logs -f            # View logs
+#   docker compose down -v            # Stop and clean up
+#
+# Profiles:
+#   docker compose --profile full up -d     # All services including demo apps
+#   docker compose --profile monitoring up  # Include Prometheus/Grafana
+# =============================================================================
+
+
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # CORE SERVICES
+  # ---------------------------------------------------------------------------
+
+  # API Server - Central hub for all Sentinel operations
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: sentinel-api:local
+    container_name: sentinel-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Server configuration
+      - API_PORT=8080
+      - API_HOST=0.0.0.0
+      # Database
+      - DB_PATH=/data/sentinel.db
+      - DB_MAX_CONNECTIONS=10
+      # Event retention
+      - EVENT_RETENTION_HOURS=24
+      - CLEANUP_INTERVAL_MINUTES=60
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      # CORS (for UI development)
+      - CORS_ENABLED=true
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      # WebSocket
+      - WS_PING_INTERVAL=30
+      - WS_PONG_TIMEOUT=10
+    volumes:
+      - api-data:/data
+      - ./api/migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=api"
+      - "sentinel.description=API Server and WebSocket hub"
+
+  # UI - React Dashboard
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    image: sentinel-ui:local
+    container_name: sentinel-ui
+    ports:
+      - "3000:80"
+    environment:
+      # API endpoint (nginx will proxy to this)
+      - VITE_API_URL=http://localhost:8080
+      - VITE_WS_URL=ws://localhost:8080/ws
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=ui"
+      - "sentinel.description=React Dashboard"
+
+  # ---------------------------------------------------------------------------
+  # AGENT & CONTROLLER (Demo/Mock Mode for local testing)
+  # ---------------------------------------------------------------------------
+
+  # Entropy Agent - Runs in demo mode without K8s
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    image: sentinel-agent:local
+    container_name: sentinel-agent
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Agent identification
+      - NODE_NAME=local-dev-node
+      - AGENT_ID=agent-local-001
+      # API connection
+      - API_ENDPOINT=http://api:8080
+      - API_TIMEOUT=30
+      - API_RETRY_ATTEMPTS=3
+      - API_RETRY_DELAY=5
+      # Scanning configuration
+      - SCAN_INTERVAL=30
+      - INITIAL_DELAY=5
+      # Demo mode (no real K8s)
+      - DEMO_MODE=true
+      - DEMO_POD_COUNT=10
+      - DEMO_DRIFT_PROBABILITY=0.1
+      # Namespaces to monitor (in demo mode, these are simulated)
+      - MONITORED_NAMESPACES=demo-app,default
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=agent"
+      - "sentinel.description=Entropy monitoring agent (demo mode)"
+
+  # Purge Controller - Runs in dry-run mode
+  controller:
+    build:
+      context: ./controller
+      dockerfile: Dockerfile
+    image: sentinel-controller:local
+    container_name: sentinel-controller
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # API connection
+      - API_ENDPOINT=http://api:8080
+      - API_TIMEOUT=30
+      # Controller configuration
+      - RECONCILE_INTERVAL=10
+      - LEADER_ELECTION=false
+      # Safety: Always dry-run in local dev
+      - DRY_RUN=true
+      # Purge configuration
+      - PURGE_SPEED=moderate
+      - DEFAULT_THRESHOLD=30
+      - GRACE_PERIOD=60
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=controller"
+      - "sentinel.description=Purge controller (dry-run mode)"
+
+  # ---------------------------------------------------------------------------
+  # DATA SIMULATOR (Generates realistic test data)
+  # ---------------------------------------------------------------------------
+
+  simulator:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.simulator
+    image: sentinel-simulator:local
+    container_name: sentinel-simulator
+    profiles:
+      - full
+      - testing
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      - API_ENDPOINT=http://api:8080
+      - SIMULATION_SPEED=1.0
+      - POD_COUNT=15
+      - DRIFT_FREQUENCY=medium
+      - ATTACK_PROBABILITY=0.05
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=simulator"
+      - "sentinel.description=Test data generator"
+
+  # ---------------------------------------------------------------------------
+  # DEMO APPLICATIONS (Simulated workloads)
+  # ---------------------------------------------------------------------------
+
+  # Demo Nginx - Simulated web frontend
+  demo-nginx:
+    image: nginx:alpine
+    container_name: sentinel-demo-nginx
+    profiles:
+      - full
+      - demo
+    ports:
+      - "8081:80"
+    volumes:
+      - ./scripts/demo/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./scripts/demo/html:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - sentinel-network
+      - demo-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.demo=true"
+      - "sentinel.description=Demo nginx application"
+
+  # Demo Postgres - Simulated database
+  demo-postgres:
+    image: postgres:15-alpine
+    container_name: sentinel-demo-postgres
+    profiles:
+      - full
+      - demo
+    environment:
+      - POSTGRES_USER=demo
+      - POSTGRES_PASSWORD=demo123
+      - POSTGRES_DB=demoapp
+    volumes:
+      - demo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d demoapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - demo-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.demo=true"
+      - "sentinel.description=Demo postgres database"
+
+  # Demo Redis - Simulated cache
+  demo-redis:
+    image: redis:7-alpine
+    container_name: sentinel-demo-redis
+    profiles:
+      - full
+      - demo
+    command: redis-server --appendonly yes
+    volumes:
+      - demo-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - demo-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.demo=true"
+      - "sentinel.description=Demo redis cache"
+
+  # ---------------------------------------------------------------------------
+  # MONITORING STACK (Optional)
+  # ---------------------------------------------------------------------------
+
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sentinel-prometheus
+    profiles:
+      - monitoring
+      - full
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - sentinel-network
+      - monitoring-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=prometheus"
+      - "sentinel.description=Metrics collection"
+
+  # Grafana - Metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sentinel-grafana
+    profiles:
+      - monitoring
+      - full
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=sentinel
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=grafana"
+      - "sentinel.description=Metrics visualization"
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+
+networks:
+  # Main Sentinel network
+  sentinel-network:
+    driver: bridge
+    name: sentinel-network
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+  # Demo applications network
+  demo-network:
+    driver: bridge
+    name: sentinel-demo-network
+
+  # Monitoring stack network
+  monitoring-network:
+    driver: bridge
+    name: sentinel-monitoring-network
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+
+volumes:
+  # API Server data (SQLite database)
+  api-data:
+    driver: local
+    name: sentinel-api-data
+
+  # Demo application data
+  demo-postgres-data:
+    driver: local
+    name: sentinel-demo-postgres-data
+
+  demo-redis-data:
+    driver: local
+    name: sentinel-demo-redis-data
+
+  # Monitoring data
+  prometheus-data:
+    driver: local
+    name: sentinel-prometheus-data
+
+  grafana-data:
+    driver: local
+    name: sentinel-grafana-data
+
+# =============================================================================
+# USAGE EXAMPLES
+# =============================================================================
+#
+# Basic Usage:
+#   docker compose up -d                    # Start core services (api, ui)
+#   docker compose up -d --build            # Rebuild and start
+#   docker compose logs -f api              # View API logs
+#   docker compose down                     # Stop services
+#   docker compose down -v                  # Stop and remove volumes
+#
+# With Agent & Controller:
+#   docker compose up -d api ui agent controller
+#
+# Full Stack with Demo Apps:
+#   docker compose --profile full up -d
+#
+# With Monitoring:
+#   docker compose --profile monitoring up -d
+#
+# Testing Specific Components:
+#   docker compose up -d api                # API only
+#   docker compose up -d api ui             # API + UI
+#   docker compose --profile demo up -d     # With demo apps
+#
+# Scaling (for load testing):
+#   docker compose up -d --scale agent=3   # Run 3 agent instances
+#
+# Viewing Logs:
+#   docker compose logs -f                  # All services
+#   docker compose logs -f api ui           # Specific services
+#   docker compose logs --tail=100 api      # Last 100 lines
+#
+# Health Checks:
+#   curl http://localhost:8080/health       # API health
+#   curl http://localhost:3000              # UI health
+#
+# API Endpoints:
+#   curl http://localhost:8080/api/leaderboard
+#   curl http://localhost:8080/api/stats
+#   curl http://localhost:8080/api/pods
+#   curl http://localhost:8080/api/events
+#   curl http://localhost:8080/api/config
+#
+# WebSocket (using websocat):
+#   websocat ws://localhost:8080/ws
+#
+# =============================================================================

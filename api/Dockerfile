@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM --platform=linux/amd64 golang:1.22-alpine AS builder
 
 WORKDIR /app
 
@@ -35,7 +35,7 @@ RUN mkdir -p /data && chown sentinel:sentinel /data
 COPY --from=builder /api /usr/local/bin/api
 
 # Set ownership
-RUN chown sentinel:sentinel /usr/local/bin/api
+RUN chown sentinel:sentinel /usr/local/bin/api && chmod +x /usr/local/bin/api
 
 # Use non-root user
 USER sentinel

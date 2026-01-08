@@ -1,0 +1,69 @@
+# =============================================================================
+# SENTINEL - Docker Compose Override for Development
+# =============================================================================
+# This file is automatically loaded with docker-compose.yml
+# Contains development-specific overrides and settings
+#
+# To disable: docker compose -f docker-compose.yml up -d
+# =============================================================================
+
+
+services:
+  # API Server - Development overrides
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      # Use dev target if available
+      target: development
+    environment:
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=text
+      - CORS_ENABLED=true
+      - CORS_ORIGINS=*
+      # Hot reload support (if implemented)
+      - DEV_MODE=true
+    volumes:
+      # Mount source for hot reload (Go with Air or similar)
+      - ./api:/app:ro
+      # Persistent data
+      - api-data:/data
+    # Override command for development
+    # command: ["air", "-c", ".air.toml"]
+
+  # UI - Development overrides
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile.dev
+    environment:
+      - VITE_API_URL=http://localhost:8080
+      - VITE_WS_URL=ws://localhost:8080/ws
+      - NODE_ENV=development
+    volumes:
+      # Mount source for hot module replacement
+      - ./ui/src:/app/src:ro
+      - ./ui/public:/app/public:ro
+      # Exclude node_modules
+      - /app/node_modules
+    ports:
+      - "3000:5173"
+    # Use Vite dev server instead of nginx
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+
+  # Agent - Development overrides
+  agent:
+    environment:
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=text
+      - SCAN_INTERVAL=10
+      - DEMO_MODE=true
+      - DEMO_DRIFT_PROBABILITY=0.2
+
+  # Controller - Development overrides
+  controller:
+    environment:
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=text
+      - DRY_RUN=true
+      - RECONCILE_INTERVAL=5
