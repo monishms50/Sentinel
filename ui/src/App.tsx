@@ -1,143 +1,198 @@
-import React, { useState } from 'react';
-import {
-  Layout,
-  ClusterHealth,
-  Leaderboard,
-  PodDetail,
-  PodManager,
+// =============================================================================
+// SENTINEL UI - APP COMPONENT (WITH DEBUG INTEGRATION)
+// =============================================================================
+// Example showing how to integrate debug utilities throughout the app.
+// =============================================================================
+
+import { useEffect, useState } from 'react';
+import { 
+  Layout, 
+  ClusterHealth, 
+  Leaderboard, 
   EventsFeed,
-  PurgeConfig,
+  PodDetail,
 } from './components';
-import { usePollingStats, useRealtimePods } from './hooks';
 
-// ============================================================================
-// TAB TYPES
-// ============================================================================
+// Import debug utilities
+import { 
+  initDebug,
+  debug,
+  useDebugRender,
+  useDebugState,
+  useDebugEffect,
+  DebugErrorBoundary,
+  DebugPanel,
+} from './utils';
 
-type TabId = 'leaderboard' | 'manager' | 'events';
+// Types
+import type { Pod, ClusterStats, DriftEvent } from './types';
 
-interface Tab {
-  id: TabId;
-  label: string;
-}
+// Initialize debug system on app load
+initDebug();
 
-const TABS: Tab[] = [
-  { id: 'leaderboard', label: 'Leaderboard' },
-  { id: 'manager', label: 'Pod Manager' },
-  { id: 'events', label: 'Events' },
-];
-
-// ============================================================================
+// =============================================================================
 // MAIN APP COMPONENT
-// ============================================================================
-
+// =============================================================================
 function App() {
-  // State
-  const [selectedPodUid, setSelectedPodUid] = useState<string | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('leaderboard');
+  // Use debug-aware state hooks in development
+  const [pods, setPods] = useDebugState<Pod[]>('App.pods', []);
+  const [stats, setStats] = useDebugState<ClusterStats | null>('App.stats', null);
+  const [events, setEvents] = useDebugState<DriftEvent[]>('App.events', []);
+  const [selectedPod, setSelectedPod] = useDebugState<Pod | null>('App.selectedPod', null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Data hooks
-  const { stats, loading: statsLoading } = usePollingStats(5000);
-  const { pods, isConnected, loading: podsLoading, refetch } = useRealtimePods();
+  // Log renders with props
+  useDebugRender('App', { 
+    podCount: pods.length, 
+    hasStats: !!stats, 
+    isConnected 
+  });
 
-  // Close pod detail when switching tabs
-  const handleTabChange = (tab: TabId) => {
-    setActiveTab(tab);
-    if (tab !== 'leaderboard') {
-      setSelectedPodUid(null);
-    }
+  // Fetch initial data with debug logging
+  useDebugEffect('App.fetchInitialData', () => {
+    const fetchData = async () => {
+      debug.info('App', 'Fetching initial data...');
+      
+      try {
+        // Fetch stats
+        debug.api('GET', '/api/stats');
+        const statsRes = await fetch(`${import.meta.env.VITE_API_URL}/api/stats`);
+        const statsData = await statsRes.json();
+        debug.api('GET', '/api/stats', undefined, statsData);
+        setStats(statsData);
+
+        // Fetch leaderboard
+        debug.api('GET', '/api/leaderboard');
+        const podsRes = await fetch(`${import.meta.env.VITE_API_URL}/api/leaderboard`);
+        const podsData = await podsRes.json();
+        debug.api('GET', '/api/leaderboard', undefined, podsData);
+        setPods(podsData.pods || []);
+
+        // Fetch events
+        debug.api('GET', '/api/events');
+        const eventsRes = await fetch(`${import.meta.env.VITE_API_URL}/api/events`);
+        const eventsData = await eventsRes.json();
+        debug.api('GET', '/api/events', undefined, eventsData);
+        setEvents(eventsData.events || []);
+
+        debug.info('App', 'Initial data loaded successfully');
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Failed to fetch data');
+        debug.error('App', error, { phase: 'initialFetch' });
+        setError(error.message);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // WebSocket connection with debug logging
+  useDebugEffect('App.websocket', () => {
+    const wsUrl = `${import.meta.env.VITE_API_URL?.replace('http', 'ws')}/api/ws/scores`;
+    debug.ws('connecting', { url: wsUrl });
+    
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      debug.ws('connected');
+      setIsConnected(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        debug.ws('message', data);
+        
+        // Handle different message types
+        if (data.type === 'score_update') {
+          setPods((prev) => 
+            prev.map((pod) => 
+              pod.name === data.pod ? { ...pod, score: data.score } : pod
+            )
+          );
+        }
+      } catch (err) {
+        debug.error('WebSocket', err instanceof Error ? err : new Error('Parse error'));
+      }
+    };
+
+    ws.onerror = (event) => {
+      debug.error('WebSocket', new Error('Connection error'), { event });
+    };
+
+    ws.onclose = () => {
+      debug.ws('disconnected');
+      setIsConnected(false);
+    };
+
+    return () => {
+      debug.ws('cleanup');
+      ws.close();
+    };
+  }, []);
+
+  // Handle pod selection
+  const handlePodSelect = (pod: Pod) => {
+    debug.info('App', 'Pod selected', { pod: pod.name });
+    setSelectedPod(pod);
   };
 
   return (
-    <Layout
-      header={{
-        stats,
-        isConnected,
-        showConfig,
-        onToggleConfig: () => setShowConfig(!showConfig),
-      }}
-    >
-      {/* Config panel (collapsible) */}
-      {showConfig && (
-        <div className="mb-6 animate-fade-in">
-          <PurgeConfig />
-        </div>
-      )}
+    <DebugErrorBoundary name="App">
+      <Layout
+        header={{
+          isConnected,
+          totalPods: stats?.totalPods || 0,
+          healthyPods: stats?.healthyPods || 0,
+          atRiskPods: stats?.atRiskPods || 0,
+        }}
+      >
+        {/* Error display */}
+        {error && (
+          <div className="mb-4 p-4 bg-sentinel-danger/10 border border-sentinel-danger/50 rounded-lg text-sentinel-danger">
+            {error}
+          </div>
+        )}
 
-      {/* Cluster health stats */}
-      <div className="mb-6">
-        <ClusterHealth stats={stats} loading={statsLoading} />
-      </div>
+        {/* Main content grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left column - Cluster health & Leaderboard */}
+          <div className="lg:col-span-2 space-y-6">
+            <DebugErrorBoundary name="ClusterHealth">
+              <ClusterHealth stats={stats} />
+            </DebugErrorBoundary>
 
-      {/* Tab navigation */}
-      <div className="flex gap-1 mb-6 border-b border-sentinel-border">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabChange(tab.id)}
-            className={`
-              px-4 py-2 text-sm font-medium transition-colors relative
-              ${activeTab === tab.id
-                ? 'text-sentinel-accent'
-                : 'text-sentinel-muted hover:text-sentinel-text'
-              }
-            `}
-          >
-            {tab.label}
-            {activeTab === tab.id && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-sentinel-accent" />
+            <DebugErrorBoundary name="Leaderboard">
+              <Leaderboard
+                pods={pods}
+                onPodSelect={handlePodSelect}
+                selectedPodName={selectedPod?.name}
+              />
+            </DebugErrorBoundary>
+          </div>
+
+          {/* Right column - Events & Pod detail */}
+          <div className="space-y-6">
+            <DebugErrorBoundary name="EventsFeed">
+              <EventsFeed events={events} />
+            </DebugErrorBoundary>
+
+            {selectedPod && (
+              <DebugErrorBoundary name="PodDetail">
+                <PodDetail
+                  pod={selectedPod}
+                  onClose={() => setSelectedPod(null)}
+                />
+              </DebugErrorBoundary>
             )}
-          </button>
-        ))}
-      </div>
-
-      {/* Main content grid */}
-      <div className="grid grid-cols-12 gap-6">
-        {/* Main panel */}
-        <div className="col-span-12 lg:col-span-7">
-          {activeTab === 'leaderboard' && (
-            <Leaderboard
-              pods={pods}
-              onSelectPod={setSelectedPodUid}
-              selectedPodUid={selectedPodUid}
-            />
-          )}
-          {activeTab === 'manager' && (
-            <PodManager
-              pods={pods}
-              onRefresh={refetch}
-              loading={podsLoading}
-            />
-          )}
-          {activeTab === 'events' && <EventsFeed />}
+          </div>
         </div>
+      </Layout>
 
-        {/* Sidebar */}
-        <div className="col-span-12 lg:col-span-5">
-          {selectedPodUid ? (
-            <PodDetail
-              podUid={selectedPodUid}
-              onClose={() => setSelectedPodUid(null)}
-            />
-          ) : activeTab === 'leaderboard' ? (
-            <EventsFeed />
-          ) : activeTab === 'manager' ? (
-            <div className="bg-sentinel-surface border border-sentinel-border rounded-lg p-6">
-              <h3 className="text-sm font-medium text-sentinel-text mb-2">
-                Pod Manager Help
-              </h3>
-              <ul className="text-xs text-sentinel-muted space-y-2">
-                <li>• Select pods using checkboxes</li>
-                <li>• Filter by status using the buttons</li>
-                <li>• Bulk purge selected pods</li>
-                <li>• Purged pods are recreated by K8s</li>
-              </ul>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </Layout>
+      {/* Debug panel - only renders when VITE_DEBUG=true */}
+      <DebugPanel />
+    </DebugErrorBoundary>
   );
 }
 
