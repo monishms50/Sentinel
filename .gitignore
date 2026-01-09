@@ -1,0 +1,5 @@
+# Local binaries
+minikube-linux-amd64
+bin/
+.git
+
