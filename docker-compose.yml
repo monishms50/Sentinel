@@ -1,0 +1,279 @@
+# =============================================================================
+# SENTINEL - Docker Compose for Local Testing (Without Kubernetes)
+# =============================================================================
+# This file runs all Sentinel components locally for development and testing.
+# No Kubernetes required - agent runs in demo mode.
+#
+# Usage:
+#   # Build all images (first time or after code changes)
+#   docker compose build --no-cache
+#
+#   # Start all services
+#   docker compose up -d
+#
+#   # View logs
+#   docker compose logs -f
+#
+#   # View specific service logs
+#   docker compose logs -f api
+#   docker compose logs -f agent
+#   docker compose logs -f controller
+#
+#   # Stop all services
+#   docker compose down
+#
+#   # Stop and remove volumes (clean slate)
+#   docker compose down -v
+#
+# Profiles:
+#   default: api + agent + controller
+#   full:    adds ui + simulator + demo apps
+#   testing: adds simulator for load testing
+#
+#   docker compose --profile full up -d
+#   docker compose --profile testing up -d
+#
+# Access Points:
+#   - API:        http://localhost:8080
+#   - UI:         http://localhost:3000 (with 'full' profile)
+#   - Health:     http://localhost:8080/health
+#   - Metrics:    http://localhost:8080/metrics
+#   - WebSocket:  ws://localhost:8080/ws
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # CORE SERVICES
+  # ---------------------------------------------------------------------------
+
+  # API Server - Central hub for all components
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      # Force native platform build to avoid exec format error
+      platforms:
+        - "linux/amd64"
+    image: sentinel-api:local
+    container_name: sentinel-api
+    platform: linux/amd64
+    ports:
+      - "8080:8080"
+    environment:
+      # Server configuration
+      - API_PORT=8080
+      - DB_PATH=/data/sentinel.db
+      # Data retention
+      - EVENT_RETENTION_HOURS=24
+      - MAX_EVENTS_PER_POD=100
+      # CORS for UI development
+      - CORS_ENABLED=true
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      # WebSocket configuration
+      - WS_PING_INTERVAL=30
+      - WS_PONG_TIMEOUT=10
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    volumes:
+      - api-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=api"
+      - "sentinel.description=API Server and WebSocket hub"
+
+  # Entropy Agent - Monitors containers for drift (demo mode)
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+      platforms:
+        - "linux/amd64"
+    image: sentinel-agent:local
+    container_name: sentinel-agent
+    platform: linux/amd64
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Agent identification
+      - NODE_NAME=local-dev-node
+      - AGENT_ID=agent-local-001
+      # API connection
+      - API_ENDPOINT=http://api:8080
+      - API_TIMEOUT=30
+      - API_RETRY_ATTEMPTS=3
+      - API_RETRY_DELAY=5
+      # Scanning configuration
+      - SCAN_INTERVAL=30
+      - INITIAL_DELAY=5
+      # Demo mode (no real K8s)
+      - DEMO_MODE=true
+      - DEMO_POD_COUNT=10
+      - DEMO_DRIFT_PROBABILITY=0.1
+      # Namespaces to monitor (in demo mode, these are simulated)
+      - MONITORED_NAMESPACES=demo-app,default
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=agent"
+      - "sentinel.description=Entropy monitoring agent (demo mode)"
+
+  # Purge Controller - Manages pod lifecycle based on entropy scores
+  controller:
+    build:
+      context: ./controller
+      dockerfile: Dockerfile
+      platforms:
+        - "linux/amd64"
+    image: sentinel-controller:local
+    container_name: sentinel-controller
+    platform: linux/amd64
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # API connection
+      - API_ENDPOINT=http://api:8080
+      - API_TIMEOUT=30
+      # Controller configuration
+      - RECONCILE_INTERVAL=10
+      - LEADER_ELECTION=false
+      # Safety: Always dry-run in local dev
+      - DRY_RUN=true
+      # Purge configuration
+      - PURGE_SPEED=moderate
+      - DEFAULT_THRESHOLD=30
+      - GRACE_PERIOD=60
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=controller"
+      - "sentinel.description=Purge controller (dry-run mode)"
+
+  # ---------------------------------------------------------------------------
+  # UI (Optional - use 'full' profile)
+  # ---------------------------------------------------------------------------
+
+  # UI - React Dashboard
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    image: sentinel-ui:local
+    container_name: sentinel-ui
+    profiles:
+      - full
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8080
+      - VITE_WS_URL=ws://localhost:8080/ws
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=ui"
+      - "sentinel.description=React Dashboard"
+
+  # ---------------------------------------------------------------------------
+  # TESTING UTILITIES (Optional profiles)
+  # ---------------------------------------------------------------------------
+
+  # Data Simulator - Generates realistic test data
+  simulator:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.simulator
+    image: sentinel-simulator:local
+    container_name: sentinel-simulator
+    platform: linux/amd64
+    profiles:
+      - full
+      - testing
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      - API_ENDPOINT=http://api:8080
+      - SIMULATION_SPEED=1.0
+      - POD_COUNT=15
+      - DRIFT_FREQUENCY=medium
+      - ATTACK_PROBABILITY=0.05
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=simulator"
+      - "sentinel.description=Test data generator"
+
+  # ---------------------------------------------------------------------------
+  # DEMO APPLICATIONS (Optional - use 'full' profile)
+  # ---------------------------------------------------------------------------
+
+  # Demo Nginx - Simulated web frontend
+  demo-nginx:
+    image: nginx:alpine
+    container_name: sentinel-demo-nginx
+    profiles:
+      - full
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=demo"
+      - "sentinel.description=Demo nginx application"
+
+  # Demo Redis - Simulated cache
+  demo-redis:
+    image: redis:alpine
+    container_name: sentinel-demo-redis
+    profiles:
+      - full
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    labels:
+      - "sentinel.component=demo"
+      - "sentinel.description=Demo redis cache"
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  api-data:
+    driver: local
+    name: sentinel-api-data
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  sentinel-network:
+    driver: bridge
+    name: sentinel-network

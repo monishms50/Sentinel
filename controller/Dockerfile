@@ -1,5 +1,13 @@
+# =============================================================================
+# SENTINEL CONTROLLER - Multi-stage Docker Build
+# =============================================================================
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+# Build arguments for cross-compilation
+ARG TARGETPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -13,14 +21,14 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 go build \
+# Build the binary - CGO disabled for portability
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-w -s" \
     -o /controller \
     main.go
 
 # Runtime stage
-FROM alpine:3.19
+FROM --platform=$TARGETPLATFORM alpine:3.19
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata
