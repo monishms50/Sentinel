@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=linux/amd64 golang:1.22-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary with CGO enabled (required for SQLite)
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=1 go build \
     -ldflags="-w -s" \
     -o /api \
     main.go
