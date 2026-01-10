@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"math/rand"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -40,9 +43,12 @@ type Agent struct {
 	nodeName            string
 	scanInterval        time.Duration
 	monitoredNamespaces []string
+	demoMode            bool
+	demoPodCount        int
+	demoDriftProb       float64
 
 	// State tracking
-	baselines map[string]*baseline.Snapshot // podUID -> baseline
+	baselines map[string]*baseline.Snapshot
 	mu        sync.RWMutex
 }
 
@@ -55,7 +61,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Handle graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -67,7 +72,6 @@ func main() {
 		cancel()
 	}()
 
-	// Run the agent
 	if err := agent.Run(ctx); err != nil {
 		fmt.Printf("❌ Agent error: %v\n", err)
 		os.Exit(1)
@@ -78,21 +82,15 @@ func main() {
 
 // NewAgent creates a new entropy agent
 func NewAgent() (*Agent, error) {
-	// Get Kubernetes client
-	config, clientset, err := getKubeClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Get configuration from environment
 	nodeName := getEnv("NODE_NAME", "unknown")
 	apiEndpoint := getEnv("API_ENDPOINT", "http://sentinel-api:8080")
 	scanIntervalSec := getEnvInt("SCAN_INTERVAL", 30)
 	monitoredNs := getEnv("MONITORED_NAMESPACES", "demo-app")
+	demoMode := getEnv("DEMO_MODE", "false") == "true"
+	demoPodCount := getEnvInt("DEMO_POD_COUNT", 10)
+	demoDriftProb := getEnvFloat("DEMO_DRIFT_PROBABILITY", 0.1)
 
 	agent := &Agent{
-		clientset:           clientset,
-		restConfig:          config,
 		monitor:             monitor.NewMonitor(),
 		calculator:          scoring.NewCalculator(),
 		reporter:            reporter.NewReporter(apiEndpoint, nodeName),
@@ -100,16 +98,30 @@ func NewAgent() (*Agent, error) {
 		scanInterval:        time.Duration(scanIntervalSec) * time.Second,
 		monitoredNamespaces: strings.Split(monitoredNs, ","),
 		baselines:           make(map[string]*baseline.Snapshot),
+		demoMode:            demoMode,
+		demoPodCount:        demoPodCount,
+		demoDriftProb:       demoDriftProb,
 	}
-
-	// Create capturer with exec function
-	agent.capturer = baseline.NewCapturer(agent.execInContainer)
 
 	fmt.Printf("📋 Configuration:\n")
 	fmt.Printf("   Node: %s\n", nodeName)
 	fmt.Printf("   API: %s\n", apiEndpoint)
 	fmt.Printf("   Scan interval: %v\n", agent.scanInterval)
 	fmt.Printf("   Monitored namespaces: %v\n", agent.monitoredNamespaces)
+	fmt.Printf("   Demo mode: %v\n", demoMode)
+
+	// Only create Kubernetes client if NOT in demo mode
+	if !demoMode {
+		config, clientset, err := getKubeClient()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
+		}
+		agent.clientset = clientset
+		agent.restConfig = config
+		agent.capturer = baseline.NewCapturer(agent.execInContainer)
+	} else {
+		fmt.Println("🎭 Running in DEMO MODE - no Kubernetes required")
+	}
 
 	return agent, nil
 }
@@ -118,14 +130,15 @@ func NewAgent() (*Agent, error) {
 func (a *Agent) Run(ctx context.Context) error {
 	fmt.Println("🚀 Agent running...")
 
-	// Start pod watcher
+	if a.demoMode {
+		return a.runDemoMode(ctx)
+	}
+
 	go a.watchPods(ctx)
 
-	// Start the monitoring loop
 	ticker := time.NewTicker(a.scanInterval)
 	defer ticker.Stop()
 
-	// Initial scan
 	a.scanAllPods(ctx)
 
 	for {
@@ -136,6 +149,202 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.scanAllPods(ctx)
 		}
 	}
+}
+
+// runDemoMode simulates pod monitoring without Kubernetes
+func (a *Agent) runDemoMode(ctx context.Context) error {
+	fmt.Printf("🎭 Demo mode: simulating %d pods\n", a.demoPodCount)
+
+	// Create simulated pods
+	type demoPod struct {
+		name      string
+		namespace string
+		uid       string
+		score     int
+	}
+
+	pods := make([]demoPod, a.demoPodCount)
+	appNames := []string{"web", "api", "worker", "cache", "db", "proxy", "gateway", "scheduler", "monitor", "logger"}
+
+	for i := 0; i < a.demoPodCount; i++ {
+		ns := a.monitoredNamespaces[i%len(a.monitoredNamespaces)]
+		appName := appNames[i%len(appNames)]
+		pods[i] = demoPod{
+			name:      fmt.Sprintf("%s-%s-%d", appName, randomString(5), i),
+			namespace: ns,
+			uid:       fmt.Sprintf("demo-uid-%d-%s", i, randomString(8)),
+			score:     100,
+		}
+	}
+
+	// Report initial baselines
+	for _, pod := range pods {
+		a.reportDemoBaseline(pod.name, pod.uid, pod.namespace)
+	}
+
+	// Periodic scanning simulation
+	ticker := time.NewTicker(a.scanInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			for i := range pods {
+				// Simulate drift with configured probability
+				if rand.Float64() < a.demoDriftProb {
+					// Drift detected - reduce score
+					penalty := rand.Intn(20) + 5
+					pods[i].score -= penalty
+					if pods[i].score < 0 {
+						pods[i].score = 0
+					}
+
+					a.reportDemoDrift(pods[i].name, pods[i].uid, pods[i].namespace, pods[i].score)
+				} else {
+					// No drift - slight score recovery
+					if pods[i].score < 100 {
+						pods[i].score += rand.Intn(3)
+						if pods[i].score > 100 {
+							pods[i].score = 100
+						}
+					}
+					a.reportDemoScore(pods[i].name, pods[i].uid, pods[i].namespace, pods[i].score)
+				}
+			}
+		}
+	}
+}
+
+func (a *Agent) reportDemoBaseline(name, uid, namespace string) {
+	payload := map[string]interface{}{
+		"podName":    name,
+		"podUID":     uid,
+		"namespace":  namespace,
+		"container":  "main",
+		"nodeName":   a.nodeName,
+		"capturedAt": time.Now().UTC(),
+		"snapshot": map[string]interface{}{
+			"filesystem": map[string]interface{}{
+				"executableHashes": map[string]string{"/bin/sh": "abc123"},
+				"configHashes":     map[string]string{"/etc/config": "def456"},
+				"tmpFiles":         []string{},
+			},
+			"processes": map[string]interface{}{
+				"processes": []map[string]string{
+					{"pid": "1", "user": "root", "cmd": "/app/main", "args": ""},
+				},
+			},
+			"network": map[string]interface{}{
+				"listeningPorts": []map[string]string{
+					{"port": "8080", "protocol": "tcp", "process": "main"},
+				},
+			},
+			"packages":    map[string]interface{}{"packages": []string{"libc", "libssl"}},
+			"permissions": map[string]interface{}{"users": []string{"root", "app"}, "groups": []string{"root"}},
+		},
+	}
+
+	a.postToAPI("/api/baselines", payload)
+	fmt.Printf("📸 Demo baseline: %s/%s\n", namespace, name)
+}
+
+func (a *Agent) reportDemoScore(name, uid, namespace string, score int) {
+	status := "healthy"
+	if score < 90 {
+		status = "warning"
+	}
+	if score < 50 {
+		status = "critical"
+	}
+
+	payload := map[string]interface{}{
+		"podName":   name,
+		"podUID":    uid,
+		"namespace": namespace,
+		"container": "main",
+		"nodeName":  a.nodeName,
+		"timestamp": time.Now().UTC(),
+		"score":     score,
+		"status":    status,
+	}
+
+	a.postToAPI("/api/scores", payload)
+}
+
+func (a *Agent) reportDemoDrift(name, uid, namespace string, score int) {
+	status := "warning"
+	if score < 50 {
+		status = "critical"
+	}
+
+	categories := []string{"filesystem", "processes", "network", "packages", "permissions"}
+	severities := []string{"low", "medium", "high"}
+	eventTypes := []string{"file_modified", "new_process", "new_port", "package_added", "permission_changed"}
+
+	category := categories[rand.Intn(len(categories))]
+	severity := severities[rand.Intn(len(severities))]
+	eventType := eventTypes[rand.Intn(len(eventTypes))]
+
+	payload := map[string]interface{}{
+		"podName":     name,
+		"podUID":      uid,
+		"namespace":   namespace,
+		"container":   "main",
+		"nodeName":    a.nodeName,
+		"scannedAt":   time.Now().UTC(),
+		"score":       score,
+		"status":      status,
+		"totalEvents": 1,
+		"scoreResult": map[string]interface{}{
+			"finalScore":      score,
+			"totalPenalty":    100 - score,
+			"eventCount":      1,
+			"highestSeverity": severity,
+		},
+		"events": []map[string]interface{}{
+			{
+				"eventId":     fmt.Sprintf("evt-%s", randomString(8)),
+				"podUID":      uid,
+				"podName":     name,
+				"namespace":   namespace,
+				"container":   "main",
+				"timestamp":   time.Now().UTC(),
+				"category":    category,
+				"severity":    severity,
+				"eventType":   eventType,
+				"description": fmt.Sprintf("Demo %s event detected", eventType),
+			},
+		},
+	}
+
+	a.postToAPI("/api/drift", payload)
+	fmt.Printf("🔍 Demo drift: %s/%s score=%d\n", namespace, name, score)
+}
+
+func (a *Agent) postToAPI(path string, payload interface{}) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	apiEndpoint := getEnv("API_ENDPOINT", "http://sentinel-api:8080")
+	resp, err := http.Post(apiEndpoint+path, "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }
 
 // watchPods watches for pod events (create, delete)
@@ -199,7 +408,7 @@ func (a *Agent) handlePodAdded(ctx context.Context, pod *corev1.Pod) {
 	a.mu.RUnlock()
 
 	if exists {
-		return // Already have baseline
+		return
 	}
 
 	fmt.Printf("🆕 New pod detected: %s/%s\n", pod.Namespace, pod.Name)
@@ -214,7 +423,6 @@ func (a *Agent) handlePodModified(ctx context.Context, pod *corev1.Pod) {
 	_, exists := a.baselines[podUID]
 	a.mu.RUnlock()
 
-	// If pod just became running and we don't have a baseline, capture one
 	if !exists && pod.Status.Phase == corev1.PodRunning {
 		fmt.Printf("🔄 Pod now running: %s/%s\n", pod.Namespace, pod.Name)
 		a.captureBaseline(ctx, pod)
@@ -231,7 +439,6 @@ func (a *Agent) handlePodDeleted(pod *corev1.Pod) {
 
 	fmt.Printf("🗑️  Pod removed: %s/%s\n", pod.Namespace, pod.Name)
 
-	// Notify API
 	if err := a.reporter.ReportPodRemoved(pod.Name, podUID, pod.Namespace); err != nil {
 		fmt.Printf("⚠️  Failed to report pod removal: %v\n", err)
 	}
@@ -241,7 +448,6 @@ func (a *Agent) handlePodDeleted(pod *corev1.Pod) {
 func (a *Agent) captureBaseline(ctx context.Context, pod *corev1.Pod) {
 	podUID := string(pod.UID)
 
-	// Capture baseline for each container
 	for _, container := range pod.Spec.Containers {
 		fmt.Printf("📸 Capturing baseline: %s/%s/%s\n", pod.Namespace, pod.Name, container.Name)
 
@@ -256,7 +462,6 @@ func (a *Agent) captureBaseline(ctx context.Context, pod *corev1.Pod) {
 		a.baselines[podUID] = snap
 		a.mu.Unlock()
 
-		// Report baseline to API
 		if err := a.reporter.ReportBaseline(snap); err != nil {
 			fmt.Printf("⚠️  Failed to report baseline: %v\n", err)
 		}
@@ -298,14 +503,11 @@ func (a *Agent) scanPod(ctx context.Context, pod *corev1.Pod) {
 	a.mu.RUnlock()
 
 	if !exists {
-		// No baseline yet, capture one
 		a.captureBaseline(ctx, pod)
 		return
 	}
 
-	// Scan each container
 	for _, container := range pod.Spec.Containers {
-		// Capture current state
 		current, err := a.capturer.CaptureBaseline(pod.Namespace, pod.Name, container.Name, podUID)
 		if err != nil {
 			fmt.Printf("⚠️  Failed to scan %s/%s/%s: %v\n",
@@ -313,24 +515,18 @@ func (a *Agent) scanPod(ctx context.Context, pod *corev1.Pod) {
 			continue
 		}
 
-		// Compare against baseline
 		report := a.monitor.Compare(base, current)
-
-		// Calculate score
 		scoreResult := a.calculator.Calculate(report)
 
-		// Log results
 		status := scoring.GetStatus(scoreResult.FinalScore)
 		if report.TotalEvents > 0 {
 			fmt.Printf("🔍 %s/%s: score=%d (%s), events=%d\n",
 				pod.Namespace, pod.Name, scoreResult.FinalScore, status, report.TotalEvents)
 
-			// Report drift to API
 			if err := a.reporter.ReportDrift(report, scoreResult); err != nil {
 				fmt.Printf("⚠️  Failed to report drift: %v\n", err)
 			}
 		} else {
-			// Just report score
 			if err := a.reporter.ReportScore(pod.Name, podUID, pod.Namespace, container.Name, scoreResult); err != nil {
 				fmt.Printf("⚠️  Failed to report score: %v\n", err)
 			}
@@ -371,10 +567,8 @@ func (a *Agent) execInContainer(namespace, pod, container string, command []stri
 
 // getKubeClient creates a Kubernetes client
 func getKubeClient() (*rest.Config, *kubernetes.Clientset, error) {
-	// Try in-cluster config first
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		// Fall back to kubeconfig
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
 			kubeconfig = os.Getenv("HOME") + "/.kube/config"
@@ -396,7 +590,6 @@ func getKubeClient() (*rest.Config, *kubernetes.Clientset, error) {
 	return config, clientset, nil
 }
 
-// getEnv gets an environment variable with a default
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -404,11 +597,19 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// getEnvInt gets an integer environment variable with a default
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if i, err := strconv.Atoi(value); err == nil {
 			return i
+		}
+	}
+	return defaultValue
+}
+
+func getEnvFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
 		}
 	}
 	return defaultValue

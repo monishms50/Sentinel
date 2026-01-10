@@ -22,7 +22,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary - CGO disabled for portability
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+RUN CGO_ENABLED=0 GOOS=linux  go build \
     -ldflags="-w -s" \
     -o /agent \
     main.go

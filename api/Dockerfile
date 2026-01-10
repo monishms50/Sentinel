@@ -1,28 +1,35 @@
-# ----------------------------
-# Builder Stage  
-# ----------------------------
-FROM golang:1.22-bookworm AS builder
-
+# ---------- BUILD STAGE ----------
+FROM --platform=linux/amd64 golang:1.22-bookworm AS builder
 WORKDIR /app
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    ca-certificates \
- && rm -rf /var/lib/lists/*
+    gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 
-# Copy go modules and download dependencies
 COPY go.mod go.sum ./
 RUN go mod download
-
-# Copy source code
 COPY . .
 
-# Build the binary for the CURRENT architecture (no cross-compile)
-RUN CGO_ENABLED=0 go build \
-    -ldflags="-w -s" \
-    -o /api \
-    main.go
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-w -s" -o /app/sentinel-api main.go
 
-# Verify the binary matches host architecture
-RUN file /api
+# ---------- RUNTIME STAGE ----------
+FROM --platform=linux/amd64 debian:12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --uid 1000 --create-home sentinel
+
+RUN mkdir -p /data && chown sentinel:sentinel /data
+
+WORKDIR /usr/local/bin
+
+COPY --from=builder /app/sentinel-api ./sentinel-api
+
+RUN chmod +x sentinel-api && chown sentinel:sentinel sentinel-api
+
+USER sentinel
+
+EXPOSE 8080
+
+ENTRYPOINT ["./sentinel-api"]
