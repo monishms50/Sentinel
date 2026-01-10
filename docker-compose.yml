@@ -51,12 +51,12 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-      # Force native platform build to avoid exec format error
-      platforms:
-        - "linux/amd64"
+      args:
+        - TARGETARCH=${TARGETARCH:-amd64}
+        - TARGETOS=${TARGETOS:-linux}
+    platform: linux/amd64
     image: sentinel-api:local
     container_name: sentinel-api
-    platform: linux/amd64
     ports:
       - "8080:8080"
     environment:
@@ -95,11 +95,11 @@ services:
     build:
       context: ./agent
       dockerfile: Dockerfile
-      platforms:
-        - "linux/amd64"
+      args:
+        - TARGETARCH=${TARGETARCH:-amd64}
+        - TARGETOS=${TARGETOS:-linux}
     image: sentinel-agent:local
     container_name: sentinel-agent
-    platform: linux/amd64
     depends_on:
       api:
         condition: service_healthy
@@ -136,11 +136,11 @@ services:
     build:
       context: ./controller
       dockerfile: Dockerfile
-      platforms:
-        - "linux/amd64"
+      args:
+        - TARGETARCH=${TARGETARCH:-amd64}
+        - TARGETOS=${TARGETOS:-linux}
     image: sentinel-controller:local
     container_name: sentinel-controller
-    platform: linux/amd64
     depends_on:
       api:
         condition: service_healthy
@@ -210,9 +210,11 @@ services:
     build:
       context: ./scripts
       dockerfile: Dockerfile.simulator
+      args:
+        - TARGETARCH=${TARGETARCH:-amd64}
+        - TARGETOS=${TARGETOS:-linux}
     image: sentinel-simulator:local
     container_name: sentinel-simulator
-    platform: linux/amd64
     profiles:
       - full
       - testing

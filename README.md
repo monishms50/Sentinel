@@ -55,6 +55,20 @@ Sentinel uses an **entropy-based scoring model (0–100)** to quantify drift acr
 ```
 
 ---
+#Quick Reference - Which Script for What:
+docker builder prune -f
+
+
+
+    ScriptUse                             ForNeeds                        K8s?
+./fix-and-build.sh all              Build Docker images               ❌ No
+docker compose up -d                Run locally                       ❌ No
+./scripts/deploy-all.sh             Deploy to Kubernetes              ✅ Yes
+./scripts/setup-minikube.sh         Create K8s cluster                ✅ Yes
+./scripts/simulate-attack.sh        Test in K8s                       ✅ Yes
+
+
+
 
 ## 🧪 Testing & Development Guide
 
