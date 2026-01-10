@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -20,19 +22,30 @@ import (
 func main() {
 	fmt.Println("🛡️  Sentinel Purge Controller starting...")
 
-	// Get configuration from environment
 	apiEndpoint := getEnv("API_ENDPOINT", "http://sentinel-api.sentinel.svc.cluster.local:8080")
-	reconcileInterval := getEnvInt("RECONCILE_INTERVAL", 10) // seconds
+	reconcileInterval := getEnvInt("RECONCILE_INTERVAL", 10)
 	dryRun := getEnvBool("DRY_RUN", false)
 	purgeSpeed := getEnv("PURGE_SPEED", "moderate")
+	demoMode := getEnvBool("DEMO_MODE", false)
 
 	fmt.Printf("📋 Configuration:\n")
 	fmt.Printf("   API Endpoint: %s\n", apiEndpoint)
 	fmt.Printf("   Reconcile Interval: %ds\n", reconcileInterval)
 	fmt.Printf("   Dry Run: %t\n", dryRun)
 	fmt.Printf("   Default Purge Speed: %s\n", purgeSpeed)
+	fmt.Printf("   Demo Mode: %t\n", demoMode)
 
-	// Create Kubernetes client
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// In demo mode, skip Kubernetes client creation
+	if demoMode {
+		fmt.Println("🎭 Running in DEMO MODE - no Kubernetes required")
+		runDemoMode(ctx, apiEndpoint, reconcileInterval)
+		return
+	}
+
+	// Create Kubernetes client (only if not in demo mode)
 	clientset, err := getKubeClient()
 	if err != nil {
 		fmt.Printf("❌ Failed to create Kubernetes client: %v\n", err)
@@ -40,39 +53,26 @@ func main() {
 	}
 	fmt.Println("✅ Connected to Kubernetes")
 
-	// Create purger
 	p := purger.NewPurger(clientset, dryRun)
 	fmt.Println("✅ Purger initialized")
 
-	// Create reconciler
 	r := reconciler.NewReconciler(p, apiEndpoint)
 	
-	// Set initial config based on purge speed
 	if speed, ok := reconciler.DefaultConfigs[reconciler.PurgeSpeed(purgeSpeed)]; ok {
 		r.SetConfig(speed)
 	}
 	fmt.Println("✅ Reconciler initialized")
 
-	// Create context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Try to fetch config from API
 	go func() {
-		// Wait a bit for API to be ready
 		time.Sleep(5 * time.Second)
 		if err := r.FetchConfig(ctx); err != nil {
 			fmt.Printf("⚠️  Could not fetch config from API, using defaults: %v\n", err)
 		}
 	}()
 
-	// Start config refresh goroutine
 	go configRefreshLoop(ctx, r, 60*time.Second)
-
-	// Start reconciliation loop
 	go reconcileLoop(ctx, r, time.Duration(reconcileInterval)*time.Second)
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -81,18 +81,76 @@ func main() {
 
 	fmt.Println("\n🛑 Shutting down controller...")
 	cancel()
-
-	// Give goroutines time to clean up
 	time.Sleep(2 * time.Second)
 	fmt.Println("👋 Controller stopped")
 }
 
-// reconcileLoop runs the reconciliation loop
+// runDemoMode runs the controller in demo mode without Kubernetes
+func runDemoMode(ctx context.Context, apiEndpoint string, reconcileIntervalSec int) {
+	fmt.Println("🚀 Controller running in demo mode...")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	ticker := time.NewTicker(time.Duration(reconcileIntervalSec) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-quit:
+			fmt.Println("\n🛑 Shutting down controller...")
+			return
+		case <-ticker.C:
+			// Fetch pods from API and check for purge candidates
+			checkPurgeCandiates(apiEndpoint)
+		}
+	}
+}
+
+func checkPurgeCandiates(apiEndpoint string) {
+	resp, err := http.Get(apiEndpoint + "/api/pods")
+	if err != nil {
+		fmt.Printf("⚠️  Failed to fetch pods: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Success bool `json:"success"`
+		Data    []struct {
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+			UID       string `json:"uid"`
+			Score     int    `json:"score"`
+			Status    string `json:"status"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fmt.Printf("⚠️  Failed to decode response: %v\n", err)
+		return
+	}
+
+	if !result.Success {
+		return
+	}
+
+	// Check for pods below threshold
+	threshold := 30
+	for _, pod := range result.Data {
+		if pod.Score < threshold {
+			fmt.Printf("🎯 [DRY-RUN] Would purge: %s/%s (score: %d)\n", 
+				pod.Namespace, pod.Name, pod.Score)
+		}
+	}
+}
+
 func reconcileLoop(ctx context.Context, r *reconciler.Reconciler, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	// Initial reconcile
 	if err := r.Reconcile(ctx); err != nil {
 		fmt.Printf("⚠️  Reconcile error: %v\n", err)
 	}
@@ -106,7 +164,6 @@ func reconcileLoop(ctx context.Context, r *reconciler.Reconciler, interval time.
 				fmt.Printf("⚠️  Reconcile error: %v\n", err)
 			}
 
-			// Log stats periodically
 			stats := r.GetStats()
 			if pending, ok := stats["pendingPurges"].(int); ok && pending > 0 {
 				fmt.Printf("📊 Stats: %d pods pending purge\n", pending)
@@ -115,7 +172,6 @@ func reconcileLoop(ctx context.Context, r *reconciler.Reconciler, interval time.
 	}
 }
 
-// configRefreshLoop periodically fetches config from the API
 func configRefreshLoop(ctx context.Context, r *reconciler.Reconciler, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -126,19 +182,15 @@ func configRefreshLoop(ctx context.Context, r *reconciler.Reconciler, interval t
 			return
 		case <-ticker.C:
 			if err := r.FetchConfig(ctx); err != nil {
-				// Don't log every time - config fetch failures are expected during startup
 				continue
 			}
 		}
 	}
 }
 
-// getKubeClient creates a Kubernetes client
 func getKubeClient() (kubernetes.Interface, error) {
-	// Try in-cluster config first
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		// Fall back to kubeconfig
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
 			kubeconfig = os.Getenv("HOME") + "/.kube/config"
@@ -161,7 +213,6 @@ func getKubeClient() (kubernetes.Interface, error) {
 	return clientset, nil
 }
 
-// getEnv gets an environment variable with a default
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -169,7 +220,6 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// getEnvInt gets an integer environment variable with a default
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if i, err := strconv.Atoi(value); err == nil {
@@ -179,7 +229,6 @@ func getEnvInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
-// getEnvBool gets a boolean environment variable with a default
 func getEnvBool(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
 		if b, err := strconv.ParseBool(value); err == nil {
