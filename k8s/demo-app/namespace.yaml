@@ -1,3 +1,6 @@
+# =============================================================================
+# SENTINEL - Demo App Namespace
+# =============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -6,4 +9,3 @@ metadata:
     app.kubernetes.io/name: demo-app
     app.kubernetes.io/part-of: sentinel-demo
     sentinel.io/monitored: "true"
-

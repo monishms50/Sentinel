@@ -1,0 +1,130 @@
+# =============================================================================
+# SENTINEL - RBAC Configuration
+# =============================================================================
+# ServiceAccount, ClusterRole, and ClusterRoleBinding for Sentinel components
+# =============================================================================
+
+---
+# ServiceAccount for the Entropy Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinel-agent
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel-agent
+    app.kubernetes.io/component: agent
+
+---
+# ServiceAccount for the API Server
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinel-api
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel-api
+    app.kubernetes.io/component: api
+
+---
+# ServiceAccount for the Purge Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinel-controller
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel-controller
+    app.kubernetes.io/component: controller
+
+---
+# ClusterRole for the Entropy Agent
+# Needs to: list/watch pods, exec into containers, get pod logs
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sentinel-agent
+  labels:
+    app.kubernetes.io/name: sentinel-agent
+rules:
+  # Pod access for monitoring
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # Exec into pods for baseline capture and drift detection
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  # Read pod logs
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # List namespaces to find monitored pods
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  # Get node info for agent identification
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+
+---
+# ClusterRole for the Purge Controller
+# Needs to: delete pods for remediation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sentinel-controller
+  labels:
+    app.kubernetes.io/name: sentinel-controller
+rules:
+  # Pod management for purging
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  # Deployment management (optional: for scaling)
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  # Events for audit logging
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  # Namespaces for listing
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for Agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sentinel-agent
+  labels:
+    app.kubernetes.io/name: sentinel-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sentinel-agent
+subjects:
+  - kind: ServiceAccount
+    name: sentinel-agent
+    namespace: sentinel
+
+---
+# ClusterRoleBinding for Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sentinel-controller
+  labels:
+    app.kubernetes.io/name: sentinel-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sentinel-controller
+subjects:
+  - kind: ServiceAccount
+    name: sentinel-controller
+    namespace: sentinel
