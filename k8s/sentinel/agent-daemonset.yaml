@@ -1,0 +1,109 @@
+# =============================================================================
+# SENTINEL - Entropy Agent DaemonSet
+# =============================================================================
+# Runs on every node to monitor pods and detect drift
+# =============================================================================
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: sentinel-agent
+  namespace: sentinel
+  labels:
+    app: sentinel-agent
+    app.kubernetes.io/name: sentinel-agent
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/part-of: sentinel
+spec:
+  selector:
+    matchLabels:
+      app: sentinel-agent
+  template:
+    metadata:
+      labels:
+        app: sentinel-agent
+        app.kubernetes.io/name: sentinel-agent
+    spec:
+      serviceAccountName: sentinel-agent
+      # Run on all nodes including control plane
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: agent
+          image: sentinel-agent:local
+          imagePullPolicy: IfNotPresent
+          env:
+            # Node identification
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # API connection
+            - name: API_ENDPOINT
+              value: "http://sentinel-api.sentinel.svc.cluster.local:8080"
+            - name: API_TIMEOUT
+              value: "30"
+            # Scanning configuration
+            - name: SCAN_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: SCAN_INTERVAL
+            - name: INITIAL_DELAY
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: INITIAL_DELAY
+            - name: MONITORED_NAMESPACES
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: MONITORED_NAMESPACES
+            # Baseline paths
+            - name: BASELINE_EXEC_PATHS
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: BASELINE_EXEC_PATHS
+            - name: BASELINE_CONFIG_FILES
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: BASELINE_CONFIG_FILES
+            - name: BASELINE_TEMP_PATHS
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: BASELINE_TEMP_PATHS
+            # Logging
+            - name: LOG_LEVEL
+              value: "info"
+            - name: LOG_FORMAT
+              value: "json"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          securityContext:
+            # Agent needs elevated privileges to exec into other pods
+            privileged: false
+            readOnlyRootFilesystem: true
+      # Prioritize agent scheduling
+      priorityClassName: system-node-critical
+      restartPolicy: Always

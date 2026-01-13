@@ -1,50 +1,143 @@
+# =============================================================================
+# SENTINEL - Demo Postgres Deployment
+# =============================================================================
+# Database pod to monitor for drift detection testing
+# =============================================================================
+
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: postgres
+  name: postgres-db
   namespace: demo-app
   labels:
-    app: postgres
-    app.kubernetes.io/name: postgres
+    app: postgres-db
+    app.kubernetes.io/name: postgres-db
     app.kubernetes.io/component: database
-    sentinel.io/monitored: "true"
+    app.kubernetes.io/part-of: demo-app
 spec:
+  serviceName: postgres-db
   replicas: 1
   selector:
     matchLabels:
-      app: postgres
+      app: postgres-db
   template:
     metadata:
       labels:
-        app: postgres
+        app: postgres-db
+        app.kubernetes.io/name: postgres-db
+        # Label for Sentinel monitoring
         sentinel.io/monitored: "true"
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: postgres:15-alpine
           ports:
-            - containerPort: 5432
-              name: postgres
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
           env:
             - name: POSTGRES_USER
-              value: "admin"
+              value: "sentinel"
             - name: POSTGRES_PASSWORD
-              value: "qwertyuiop"
+              value: "sentinel-demo-password"
             - name: POSTGRES_DB
-              value: "sentineldb"
+              value: "sentinel_demo"
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - sentinel
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - sentinel
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          emptyDir: {}
+      restartPolicy: Always
+
 ---
+# Service for postgres
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres
+  name: postgres-db
   namespace: demo-app
   labels:
-    app: postgres
+    app: postgres-db
 spec:
-  selector:
-    app: postgres
-  ports:
-    - port: 5432
-      targetPort: 5432
-      name: postgres
   type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    app: postgres-db
+
+---
+# Additional Redis deployment for variety
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cache
+  namespace: demo-app
+  labels:
+    app: redis-cache
+    app.kubernetes.io/name: redis-cache
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-cache
+  template:
+    metadata:
+      labels:
+        app: redis-cache
+        sentinel.io/monitored: "true"
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5

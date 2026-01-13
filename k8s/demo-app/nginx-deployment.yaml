@@ -1,64 +1,115 @@
+# =============================================================================
+# SENTINEL - Demo Nginx Deployment
+# =============================================================================
+# Web frontend pods to monitor for drift detection testing
+# =============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-web
   namespace: demo-app
   labels:
-    app: nginx
+    app: nginx-web
     app.kubernetes.io/name: nginx-web
-    app.kubernetes.io/component: webserver
-    sentinel.io/monitored: "true"
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: demo-app
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: nginx
+      app: nginx-web
   template:
     metadata:
       labels:
-        app: nginx
+        app: nginx-web
+        app.kubernetes.io/name: nginx-web
+        # Label for Sentinel monitoring
         sentinel.io/monitored: "true"
     spec:
       containers:
         - name: nginx
           image: nginx:1.25-alpine
           ports:
-            - containerPort: 80
-              name: http
+            - name: http
+              containerPort: 80
+              protocol: TCP
           resources:
             requests:
-              memory: "64Mi"
-              cpu: "50m"
+              memory: "32Mi"
+              cpu: "10m"
             limits:
-              memory: "128Mi"
+              memory: "64Mi"
               cpu: "100m"
-          # Readiness probe for K8s to know when pod is ready
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          # Liveness probe for K8s to restart unhealthy pods
           livenessProbe:
             httpGet:
               path: /
-              port: 80
-            initialDelaySeconds: 10
-            periodSeconds: 30
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: html
+          configMap:
+            name: nginx-html
+      restartPolicy: Always
+
 ---
+# ConfigMap with sample HTML
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-html
+  namespace: demo-app
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Sentinel Demo App</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 40px; background: #1a1a2e; color: #eee; }
+        .container { max-width: 600px; margin: 0 auto; text-align: center; }
+        h1 { color: #4ade80; }
+        .status { padding: 20px; background: #16213e; border-radius: 8px; margin: 20px 0; }
+        .healthy { border-left: 4px solid #4ade80; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🛡️ Sentinel Demo App</h1>
+        <div class="status healthy">
+          <p><strong>Status:</strong> Running</p>
+          <p>This pod is being monitored by Sentinel</p>
+        </div>
+        <p>Use <code>simulate-attack.sh</code> to test drift detection</p>
+      </div>
+    </body>
+    </html>
+
+---
+# Service for nginx
 apiVersion: v1
 kind: Service
 metadata:
   name: nginx-web
   namespace: demo-app
   labels:
-    app: nginx
+    app: nginx-web
 spec:
-  selector:
-    app: nginx
-  ports:
-    - port: 80
-      targetPort: 80
-      name: http
   type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: nginx-web

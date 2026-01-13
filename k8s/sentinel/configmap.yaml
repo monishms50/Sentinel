@@ -1,0 +1,101 @@
+# =============================================================================
+# SENTINEL - ConfigMap
+# =============================================================================
+# Configuration for scoring weights, thresholds, and purge settings
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentinel-config
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: sentinel
+    app.kubernetes.io/component: config
+data:
+  # ==========================================================================
+  # Scoring Configuration
+  # ==========================================================================
+  
+  # Category weights (must sum to 1.0)
+  SCORING_WEIGHT_FILESYSTEM: "0.35"
+  SCORING_WEIGHT_PROCESSES: "0.30"
+  SCORING_WEIGHT_NETWORK: "0.20"
+  SCORING_WEIGHT_PACKAGES: "0.10"
+  SCORING_WEIGHT_PERMISSIONS: "0.05"
+  
+  # Event severity points
+  POINTS_NEW_EXECUTABLE: "15"
+  POINTS_MODIFIED_BINARY: "25"
+  POINTS_NEW_TMP_FILE: "10"
+  POINTS_CONFIG_MODIFIED: "5"
+  POINTS_NEW_PROCESS: "10"
+  POINTS_CRYPTO_MINER: "50"
+  POINTS_SUSPICIOUS_PROCESS: "30"
+  POINTS_NEW_PORT: "20"
+  POINTS_SUSPICIOUS_PORT: "35"
+  POINTS_NEW_PACKAGE: "15"
+  POINTS_NEW_USER: "30"
+  POINTS_NEW_GROUP: "15"
+  
+  # ==========================================================================
+  # Purge Configuration
+  # ==========================================================================
+  
+  # Purge speed: off, conservative, moderate, aggressive
+  PURGE_SPEED: "moderate"
+  
+  # Auto-purge enabled
+  AUTO_PURGE_ENABLED: "true"
+  
+  # Score thresholds by purge speed
+  THRESHOLD_CONSERVATIVE: "30"
+  THRESHOLD_MODERATE: "40"
+  THRESHOLD_AGGRESSIVE: "50"
+  
+  # Grace period (seconds) - time to wait before purging
+  GRACE_PERIOD_CONSERVATIVE: "300"
+  GRACE_PERIOD_MODERATE: "60"
+  GRACE_PERIOD_AGGRESSIVE: "0"
+  
+  # ==========================================================================
+  # Agent Configuration
+  # ==========================================================================
+  
+  # Scan interval in seconds
+  SCAN_INTERVAL: "30"
+  
+  # Initial delay before first scan (seconds)
+  INITIAL_DELAY: "10"
+  
+  # Namespaces to monitor (comma-separated, empty = all)
+  MONITORED_NAMESPACES: "demo-app,default"
+  
+  # Pod label selector for monitoring
+  MONITORED_LABEL: "sentinel.io/monitored=true"
+  
+  # ==========================================================================
+  # API Configuration
+  # ==========================================================================
+  
+  # Event retention (hours)
+  EVENT_RETENTION_HOURS: "24"
+  
+  # Maximum events per pod
+  MAX_EVENTS_PER_POD: "100"
+  
+  # Database path
+  DB_PATH: "/data/sentinel.db"
+  
+  # ==========================================================================
+  # Baseline Capture Paths
+  # ==========================================================================
+  
+  # Executable directories to hash
+  BASELINE_EXEC_PATHS: "/bin,/usr/bin,/sbin,/usr/sbin"
+  
+  # Config files to monitor
+  BASELINE_CONFIG_FILES: "/etc/passwd,/etc/shadow,/etc/group,/etc/sudoers"
+  
+  # Temp directories to watch
+  BASELINE_TEMP_PATHS: "/tmp,/var/tmp"

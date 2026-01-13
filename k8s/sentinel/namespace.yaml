@@ -1,9 +1,14 @@
+# =============================================================================
+# SENTINEL - Namespace
+# =============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
   name: sentinel
   labels:
     app.kubernetes.io/name: sentinel
+    app.kubernetes.io/component: system
     app.kubernetes.io/part-of: sentinel
+ 
     # Don't monitor ourselves - avoid infinite loops
     sentinel.io/monitored: "false"

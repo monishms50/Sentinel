@@ -1,0 +1,104 @@
+# =============================================================================
+# SENTINEL - Purge Controller Deployment
+# =============================================================================
+# Watches entropy scores and automatically purges compromised pods
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-controller
+  namespace: sentinel
+  labels:
+    app: sentinel-controller
+    app.kubernetes.io/name: sentinel-controller
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: sentinel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentinel-controller
+  template:
+    metadata:
+      labels:
+        app: sentinel-controller
+        app.kubernetes.io/name: sentinel-controller
+    spec:
+      serviceAccountName: sentinel-controller
+      containers:
+        - name: controller
+          image: sentinel-controller:local
+          imagePullPolicy: IfNotPresent
+          env:
+            # API connection
+            - name: API_ENDPOINT
+              value: "http://sentinel-api.sentinel.svc.cluster.local:8080"
+            - name: API_TIMEOUT
+              value: "30"
+            # Controller configuration
+            - name: RECONCILE_INTERVAL
+              value: "10"
+            - name: LEADER_ELECTION
+              value: "false"
+            # Purge configuration
+            - name: PURGE_SPEED
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: PURGE_SPEED
+            - name: AUTO_PURGE_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: AUTO_PURGE_ENABLED
+            - name: THRESHOLD_CONSERVATIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: THRESHOLD_CONSERVATIVE
+            - name: THRESHOLD_MODERATE
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: THRESHOLD_MODERATE
+            - name: THRESHOLD_AGGRESSIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: THRESHOLD_AGGRESSIVE
+            - name: GRACE_PERIOD_CONSERVATIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: GRACE_PERIOD_CONSERVATIVE
+            - name: GRACE_PERIOD_MODERATE
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: GRACE_PERIOD_MODERATE
+            - name: GRACE_PERIOD_AGGRESSIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: sentinel-config
+                  key: GRACE_PERIOD_AGGRESSIVE
+            # Safety: Dry run mode (set to "false" to enable actual purging)
+            - name: DRY_RUN
+              value: "true"
+            # Logging
+            - name: LOG_LEVEL
+              value: "info"
+            - name: LOG_FORMAT
+              value: "json"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+      restartPolicy: Always
