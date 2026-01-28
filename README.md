@@ -6,7 +6,7 @@ Sentinel uses an **entropy-based scoring model (0–100)** to quantify drift acr
 
 ---
 
-## 🚀 Key Capabilities
+## Key Capabilities
 
 * **Cluster-wide runtime monitoring**
   Lightweight agents run as a DaemonSet on every node.
@@ -28,7 +28,7 @@ Sentinel uses an **entropy-based scoring model (0–100)** to quantify drift acr
 
 ---
 
-## 🏗️ High-Level Architecture
+## High-Level Architecture
 
 ```
 [ Kubernetes Node ]
@@ -70,7 +70,7 @@ docker compose up -d                Run locally                       ❌ No
 
 
 
-## 🧪 Testing & Development Guide
+## Testing & Development Guide
 
 This project supports **three primary workflows**:
 
@@ -80,7 +80,7 @@ This project supports **three primary workflows**:
 
 ---
 
-## 🟢 Quick Start — “I just cloned the repo”
+## Quick Start — “I just cloned the repo”
 
 Use **Docker Compose** for the simplest setup:
 
@@ -94,7 +94,7 @@ This runs the Agent in **demo mode**, generating synthetic drift events automati
 
 ---
 
-## 🔵 API / UI Development Workflow
+## API / UI Development Workflow
 
 For developing new API or UI features:
 
@@ -108,7 +108,7 @@ make compose-logs-api  # Inspect API logs if needed
 
 ---
 
-## 🟣 Kubernetes Agent & Controller Testing
+## Kubernetes Agent & Controller Testing
 
 Use this when testing **real DaemonSet behavior and remediation logic**.
 
@@ -120,137 +120,16 @@ Use this when testing **real DaemonSet behavior and remediation logic**.
 
 ### Deploy Sentinel to Minikube
 
-```bash
-eval $(minikube docker-env)
-make docker
-./scripts/deploy-all.sh
-kubectl get pods -n sentinel
-```
+``` Under Development```
 
-You should see one Agent pod per node.
+## Validating Drift Detection
+
+
+``` Under Development```
 
 ---
 
-## 🔴 Validating Drift Detection
-
-### Docker Compose (Demo Mode)
-
-```bash
-make compose-up
-```
-
-Agents automatically emit synthetic drift events.
-
-### Kubernetes (Realistic Attacks)
-
-```bash
-./scripts/simulate-attack.sh --type=all --severity=medium
-```
-
-Inspect results:
-
-```bash
-curl http://localhost:8080/api/events
-curl http://localhost:8080/api/leaderboard
-```
-
----
-
-## 🎤 Demo Walkthrough (Stakeholder-Friendly)
-
-```bash
-# 1. Start clean
-make compose-down-v
-make compose-up
-
-# 2. Show healthy baseline
-curl http://localhost:8080/api/leaderboard | jq
-
-# 3. Simulate an attack (K8s)
-./scripts/simulate-attack.sh --type=filesystem --severity=critical
-
-# 4. Show score degradation
-curl http://localhost:8080/api/leaderboard | jq
-
-# 5. Cleanup
-./scripts/simulate-attack.sh --cleanup
-```
-
----
-
-## 🤖 CI / Automated Testing
-
-### Option A — Docker Compose (Fast)
-
-```bash
-make compose-up
-make test-integration
-make compose-down
-```
-
-### Option B — Kubernetes E2E (Thorough)
-
-```bash
-./scripts/setup-minikube.sh
-./scripts/deploy-all.sh --skip-wait
-make test-e2e
-```
-
----
-
-## 🧭 Workflow Decision Guide
-
-```
-START
- │
- ├─ Do you need Kubernetes-specific behavior?
- │     ├─ NO  → make compose-up
- │     └─ YES → setup-minikube.sh
- │                └─ deploy-all.sh
- │                     └─ simulate-attack.sh
- │
- └─ Need hot reload while coding?
-       └─ YES → tilt up
-```
-
----
-
-## 📎 Sentinel Command Cheat Sheet
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║                  SENTINEL — QUICK COMMANDS                   ║
-╠══════════════════════════════════════════════════════════════╣
-║ DAILY DEVELOPMENT (Docker Compose)                            ║
-║ ─────────────────────────────────────────────────────────── ║
-║ make compose-up           Start all services                  ║
-║ make compose-logs         View logs                           ║
-║ make compose-rebuild      Rebuild after changes               ║
-║ make compose-down         Stop services                       ║
-║                                                              ║
-║ KUBERNETES DEVELOPMENT                                       ║
-║ ─────────────────────────────────────────────────────────── ║
-║ ./scripts/setup-minikube.sh  One-time cluster setup          ║
-║ ./scripts/deploy-all.sh      Deploy Sentinel                 ║
-║ ./scripts/simulate-attack.sh Test drift detection            ║
-║                                                              ║
-║ TESTING                                                      ║
-║ ─────────────────────────────────────────────────────────── ║
-║ make test                 Run all tests                      ║
-║ make health-check         Verify services                    ║
-║ make api-test              API validation                    ║
-║                                                              ║
-║ TROUBLESHOOTING                                               ║
-║ ─────────────────────────────────────────────────────────── ║
-║ make compose-logs-api     API logs                           ║
-║ make k8s-status           Kubernetes resources               ║
-║ make help                 List all commands                  ║
-╚══════════════════════════════════════════════════════════════╝
-```
-
----
-
-## 📌 Intended Audience
+## Intended Audience
 
 * **Security engineers** validating runtime integrity
 * **Platform engineers** operating Kubernetes clusters
@@ -259,7 +138,7 @@ START
 
 ---
 
-## 🛡️ Project Philosophy
+## Project Philosophy
 
 Sentinel is designed to **detect compromise early**, **respond automatically**, and **minimize blast radius** — without requiring application changes.
 
